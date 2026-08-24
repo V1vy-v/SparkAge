@@ -19,14 +19,16 @@ namespace SparkAge.Game
         Sprite _hexSprite;
         SpriteRenderer _highlight;
 
+        private void Awake()
+        {
+            _map = new MapData(12, 12);
+            _hexSprite = HexSpriteFactory.CreateHexSprite(128, Color.white);
+        }
         private void Start()
         {
-            _map = new MapData(5, 5);
-            _hexSprite = HexSpriteFactory.CreateHexSprite(128, Color.white);
             BuildTiles();
             BuildHighlight();
             CenterCameraOnMap();
-
         }
         private void Update()
         {
@@ -80,8 +82,12 @@ namespace SparkAge.Game
         {
             Vector2 center = HexLayout.HexToPixel(new HexCoord(_map.Width / 2, _map.Height / 2), hexSize);
             Camera.main.transform.position = new Vector3(center.x, center.y, -10f);
-            print(Camera.main.transform.position);
         }
 
+        public (Vector2, Vector2) GetMapBounds()
+        {
+            return (HexLayout.HexToPixel(new HexCoord(_map.Width - 1, _map.Height - 1), 1f),
+                HexLayout.HexToPixel(new HexCoord(0, 0), hexSize));
+        }
     }
 }
