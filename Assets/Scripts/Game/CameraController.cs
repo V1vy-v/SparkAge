@@ -8,7 +8,7 @@ using UnityEngine;
 
 public class CameraController : MonoBehaviour
 {
-    // 按下右键时抓的世界点
+    //按下右键时抓的世界点
     Vector3 _grabPoint;
     //滚轮缩放速度
     private float scrollSpeed = 2f; 

@@ -28,11 +28,11 @@ namespace SparkAge.Core.Map
             HexCoord hexCoord;
             for (int i = 0; i < width; i++)
             {
-                for(int j = 0; j < height; j++)
+                for (int j = 0; j < height; j++)
                 {
                     hexCoord = new HexCoord(i, j);
                     Tiles.Add(hexCoord, new TileData { Coord = hexCoord, Type = TerrainType.Plain });
-                } 
+                }
             }
         }
     }

@@ -11,17 +11,21 @@ namespace SparkAge.Game
     /// </summary>
     public class MapView : MonoBehaviour
     {
-        [SerializeField] float hexSize = 1f;
+        [SerializeField] float hexSize = 1f;//单位大小
+        [SerializeField] int seed;
         [SerializeField] Color plainColor = new Color(0.45f, 0.75f, 0.45f);   // 平原的绿色
+        [SerializeField] Color forestColor = new Color(1f, 1f, 0.4f, 0.6f); // 森林的深绿色
+        [SerializeField] Color mountainColor = new Color(1f, 1f, 0.4f, 0.6f); // 山峦的褐色
+        [SerializeField] Color waterColor = new Color(1f, 1f, 0.4f, 0.6f); // 水域的天蓝色
         [SerializeField] Color highlightColor = new Color(1f, 1f, 0.4f, 0.6f); // 高亮的黄色(半透明)
-        
+
         MapData _map;
         Sprite _hexSprite;
         SpriteRenderer _highlight;
 
         private void Awake()
         {
-            _map = new MapData(12, 12);
+            _map = MapGenerator.Generate(20, 20, seed);
             _hexSprite = HexSpriteFactory.CreateHexSprite(128, Color.white);
         }
         private void Start()
@@ -44,17 +48,18 @@ namespace SparkAge.Game
             {
                 GameObject obj = new GameObject($"tile {tile.Coord.R}, {tile.Coord.Q}");
                 SpriteRenderer sr = obj.AddComponent<SpriteRenderer>();
-                sr.color = plainColor;
+                sr.color = GetTerrainColor(tile.Type);
                 sr.sprite = _hexSprite;
                 sr.sortingOrder = 0;
 
                 obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize);
             }
         }
-
+        /// <summary>
+        /// 创建高亮六边形对象
+        /// </summary>
         private void BuildHighlight()
         {
-            //创建高亮六边形对象
             GameObject obj = new GameObject("highlight");
             _highlight = obj.AddComponent<SpriteRenderer>();
             _highlight.color = highlightColor;
@@ -63,6 +68,9 @@ namespace SparkAge.Game
             //初始隐藏
             obj.SetActive(false);
         }
+        /// <summary>
+        /// 实现点击高亮：移动高亮六边形对象
+        /// </summary>
         private void ClickHighlight()
         {
             Vector3 clickPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
@@ -78,16 +86,43 @@ namespace SparkAge.Game
             _highlight.transform.position = HexLayout.HexToPixel(clickHex, hexSize);
             _highlight.gameObject.SetActive(true);
         }
+        /// <summary>
+        /// 摄像机位置初始化：地图中央
+        /// </summary>
         private void CenterCameraOnMap()
         {
             Vector2 center = HexLayout.HexToPixel(new HexCoord(_map.Width / 2, _map.Height / 2), hexSize);
             Camera.main.transform.position = new Vector3(center.x, center.y, -10f);
         }
-
+        /// <summary>
+        /// 获取地图边界：左下和右上端点
+        /// </summary>
+        /// <returns></returns>
         public (Vector2, Vector2) GetMapBounds()
         {
             return (HexLayout.HexToPixel(new HexCoord(_map.Width - 1, _map.Height - 1), 1f),
                 HexLayout.HexToPixel(new HexCoord(0, 0), hexSize));
+        }
+        /// <summary>
+        /// 根据地形设置颜色，表现层职责
+        /// </summary>
+        /// <param name="terrainType"></param>
+        /// <returns></returns>
+        public Color GetTerrainColor(TerrainType terrainType)
+        {
+            switch(terrainType)
+            {
+                case TerrainType.Plain:
+                    return plainColor;
+                case TerrainType.Forest:
+                    return forestColor;
+                case TerrainType.Mountain:
+                    return mountainColor;
+                case TerrainType.Water:
+                    return waterColor;
+                default:
+                    return plainColor;
+            }
         }
     }
 }
