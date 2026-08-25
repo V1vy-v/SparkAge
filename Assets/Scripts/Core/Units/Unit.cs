@@ -19,5 +19,6 @@ namespace SparkAge.Core.Units
             MaxMovement = maxMovement;
             MovementLeft = movementLeft;
         }
+
     }
 }

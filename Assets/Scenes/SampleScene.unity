@@ -407,6 +407,7 @@ MonoBehaviour:
   waterColor: {r: 0, g: 0.7672267, b: 1, a: 0.6}
   highlightColor: {r: 1, g: 1, b: 0.4, a: 0.6}
   unitHighlightColor: {r: 1, g: 0, b: 0, a: 1}
+  reachableColor: {r: 0, g: 0.28325215, b: 0.8301887, a: 0.6}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

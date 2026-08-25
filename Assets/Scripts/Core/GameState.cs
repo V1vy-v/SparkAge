@@ -20,42 +20,79 @@ namespace SparkAge.Core
         }
 
         //查询某个格子有没有单位
-        public bool GetUnitAt(HexCoord hexCoord)
+        public Unit GetUnitAt(HexCoord hexCoord)
         {
-            foreach(var unit in Units)
+            foreach (var unit in Units)
             {
                 if (unit.Position.Equals(hexCoord))
-                    return true;
+                    return unit;
             }
-            return false;
+            return null;
         }
         /// <summary>
         /// BFS算法搜索第一个可以作为出生点的地块
         /// </summary>
         /// <param name="center"></param>
         /// <returns></returns>
-        public HexCoord FindSpawnPoint(HexCoord center)
+        public HexCoord? FindSpawnPoint(HexCoord center)
         {
             Queue<HexCoord> queue = new();
             List<HexCoord> visited = new List<HexCoord> { center };
             queue.Enqueue(center);
-            while(queue.Count > 0)
+            while (queue.Count > 0)
             {
                 HexCoord curHex = queue.Dequeue();
-                if (Map.Tiles[curHex].Type != TerrainType.Water) 
+                if (Map.Tiles[curHex].Type != TerrainType.Water)
                     return curHex;
 
-                for(int i = 0; i < 6; i++)
+                for (int i = 0; i < 6; i++)
                 {
                     HexCoord newHex = curHex.Neighbor(i);
                     if (Map.IsInMap(newHex) && !visited.Contains(newHex))
                     {
                         queue.Enqueue(newHex);
                         visited.Add(newHex);
-                    } 
+                    }
                 }
             }
-            return visited[visited.Count - 1];
+            return null;
+        }
+        /// <summary>
+        /// 根据单位位置和移动力使用扩散算法计算可到达点
+        /// </summary>
+        /// <param name="unit"></param>
+        /// <returns></returns>
+        public Dictionary<HexCoord, int> GetReachableTiles(Unit unit)
+        {
+            Dictionary<HexCoord, int> movementLeftDic = new Dictionary<HexCoord, int>();
+
+            movementLeftDic[unit.Position] = unit.MovementLeft;
+            Queue<HexCoord> queue = new();
+            queue.Enqueue(unit.Position);
+            while (queue.Count > 0)
+            {
+                HexCoord curHex = queue.Dequeue();
+
+                for (int i = 0; i < 6; i++)
+                {
+                    HexCoord newHex = curHex.Neighbor(i);
+                    if (!Map.IsInMap(newHex)) continue;
+                    int cost = Map.Tiles[newHex].MoveCost;
+                    if (cost <= 0) continue;
+                    int remaining = movementLeftDic[curHex] - cost;
+                    if (remaining < 0) continue;
+                    if (!movementLeftDic.TryGetValue(newHex, out int old) || remaining > old)
+                    {
+                        movementLeftDic[newHex] = remaining;
+                        queue.Enqueue(newHex);
+                    }
+                }
+            }
+            return movementLeftDic;
+        }
+
+        public void MoveUnit(Unit unit, HexCoord tarHex)
+        {
         }
     }
 }
