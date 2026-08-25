@@ -19,6 +19,8 @@ namespace SparkAge.Core.Map
         public Dictionary<HexCoord, TileData> Tiles = new Dictionary<HexCoord, TileData>();
         //判断格子在不在地图内
         public bool IsInMap(HexCoord hexCoord) => Tiles.ContainsKey(hexCoord);
+        //地图中心地块
+        public HexCoord Center => new HexCoord(Width / 2, Height / 2);
         //地图初始化
         public MapData(int width, int height)
         {

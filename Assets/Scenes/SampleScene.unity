@@ -400,12 +400,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   hexSize: 1
-  seed: 854
+  seed: 8888
   plainColor: {r: 0.45, g: 0.75, b: 0.45, a: 1}
   forestColor: {r: 0, g: 0.3490566, b: 0.026765475, a: 0.6}
   mountainColor: {r: 0.24528301, g: 0.1289308, b: 0, a: 0.6}
   waterColor: {r: 0, g: 0.7672267, b: 1, a: 0.6}
   highlightColor: {r: 1, g: 1, b: 0.4, a: 0.6}
+  unitHighlightColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
