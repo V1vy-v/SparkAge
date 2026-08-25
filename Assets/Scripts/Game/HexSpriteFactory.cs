@@ -25,7 +25,7 @@ namespace SparkAge.Game
         public static Sprite CreateHexCircleSprite(int size, Color color)
         {
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            float r1 = size / 2f, r2 = size / 2f - 4;
+            float r1 = size / 2f, r2 = size / 2f - 8;
             var center = new Vector2(r1, r1);
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
