@@ -42,7 +42,7 @@ namespace SparkAge.Core
             while (queue.Count > 0)
             {
                 HexCoord curHex = queue.Dequeue();
-                if (Map.Tiles[curHex].Type != TerrainType.Water)
+                if (Map.Tiles[curHex].Walkable)
                     return curHex;
 
                 for (int i = 0; i < 6; i++)
@@ -93,6 +93,7 @@ namespace SparkAge.Core
 
         public void MoveUnit(Unit unit, HexCoord tarHex)
         {
+
         }
     }
 }

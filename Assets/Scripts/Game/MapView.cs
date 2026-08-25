@@ -31,7 +31,7 @@ namespace SparkAge.Game
         SpriteRenderer _highlight;//地块高亮渲染器
         SpriteRenderer _unitHighlight;//单位选中框渲染器
 
-        Dictionary<Unit, Dictionary<HexCoord, int>> unitReachableHex = new();//所有单位可移动范围及对应剩余移动力
+        Dictionary<HexCoord, int> reachableHex = new();//当前单位可移动范围及对应剩余移动力
         List<GameObject> reachableObjs = new List<GameObject>(128);
 
         private void Awake()
@@ -205,11 +205,10 @@ namespace SparkAge.Game
             _unitHighlight.gameObject.SetActive(true);
 
             //计算可移动范围
-            if (!unitReachableHex.ContainsKey(unit))
-                unitReachableHex.Add(unit, _state.GetReachableTiles(unit));
+            reachableHex = _state.GetReachableTiles(unit);
 
             //显示移动范围
-            ShowRange(unitReachableHex[unit]);
+            ShowRange(reachableHex);
         }
         /// <summary>
         /// 隐藏选中框和范围对象
