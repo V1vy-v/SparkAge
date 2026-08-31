@@ -2,6 +2,8 @@ using SparkAge.Core.Hex;
 using SparkAge.Core.Map;
 using SparkAge.Core.Units;
 using System.Collections.Generic;
+using System;
+using UnityEngine;
 
 namespace SparkAge.Core
 {
@@ -62,7 +64,7 @@ namespace SparkAge.Core
         /// </summary>
         /// <param name="unit"></param>
         /// <returns></returns>
-        public Dictionary<HexCoord, int> GetReachableTiles(Unit unit)
+        public List<HexCoord> GetReachableTiles(Unit unit)
         {
             Dictionary<HexCoord, int> movementLeftDic = new Dictionary<HexCoord, int>();
 
@@ -88,12 +90,41 @@ namespace SparkAge.Core
                     }
                 }
             }
-            return movementLeftDic;
+            return new List<HexCoord>(movementLeftDic.Keys);
         }
 
-        public void MoveUnit(Unit unit, HexCoord tarHex)
+        //public enum MoveFailReason { Success, TileOccupied, Unreachable }
+        //public readonly struct MoveResult
+        //{
+        //    public readonly bool Success;
+        //    public readonly MoveFailReason Reason;     // 枚举：None / TileOccupied / Unreachable
+        //    public readonly List<HexCoord> Path;       // 成功时有效（不含起点）
+        //}
+        public List<HexCoord> MoveUnit(Unit unit, HexCoord tarHex)
         {
+            if (!GetReachableTiles(unit).Contains(tarHex))
+            {
+                Debug.Log("当前地块不可到达");
+                return null;
+            }
+            if(GetUnitAt(tarHex) != null)
+            {
+                Debug.Log("当前地块已存在单位");
+                return null;
+            }
 
+            PathResult pathRes = Pathfinding.FindPath(unit.Position, tarHex,
+                hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
+
+            if (!pathRes.Found)
+            {
+                Debug.Log("未找到可移动路径");
+                return null;
+            }
+
+            unit.MovementLeft -= pathRes.Cost;
+            unit.Position = tarHex;
+            return pathRes.Path;
         }
     }
 }

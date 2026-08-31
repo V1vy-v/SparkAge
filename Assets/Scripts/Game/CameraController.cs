@@ -24,10 +24,10 @@ public class CameraController : MonoBehaviour
 
     void Update()
     {
-        //右键拖拽
-        if(Input.GetMouseButtonDown(1))
+        //中键拖拽
+        if(Input.GetMouseButtonDown(2))
             _grabPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        else if (Input.GetMouseButton(1))
+        else if (Input.GetMouseButton(2))
             CameraMove();
         //中键滚轮缩放
         float scroll = Input.GetAxis("Mouse ScrollWheel");
