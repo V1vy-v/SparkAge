@@ -2,8 +2,11 @@ using SparkAge.Core;
 using SparkAge.Core.Hex;
 using SparkAge.Core.Map;
 using SparkAge.Core.Units;
+using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
+using static SparkAge.Core.GameState;
 
 namespace SparkAge.Game
 {
@@ -78,6 +81,8 @@ namespace SparkAge.Game
         }
         private void Update()
         {
+            if (_isMoving) return;
+
             if (Input.GetMouseButtonDown(0))
             {
                 HandleClick();
@@ -306,14 +311,43 @@ namespace SparkAge.Game
             }
         }
      
+        private bool _isMoving = false;
+        /// <summary>
+        /// 单位移动
+        /// </summary>
+        /// <param name="unit"></param>
+        /// <param name="tarHex"></param>
         public void MoveUnit(Unit unit, HexCoord tarHex)
         {
-            List<HexCoord> tmp = _state.MoveUnit(unit, tarHex);//返回路径，后面再用
+            MoveResult result = _state.MoveUnit(unit, tarHex);
+            if (!result.Success)
+            {
+                Debug.Log(result.Reason == MoveFailReason.Unreachable ? "目标不可达" : "该格已有单位");
+                return;    // 失败：不移动、不刷新
+            }
 
-            GameObject _selectedUnitObj = _unitObjs[unit];
-            _selectedUnitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize);
+            _isMoving = true;
+            StartCoroutine(MoveSequence(_unitObjs[unit], result.Path));
+        }
 
-            SelectUnit(unit);
+        private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
+        /// <summary>
+        /// 单位移动协程，移动动画
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        IEnumerator MoveSequence(GameObject obj, List<HexCoord> path)
+        {
+            yield return null;
+            foreach(HexCoord hex in path)
+            {
+                obj.transform.position = HexLayout.HexToPixel(hex, hexSize);
+                yield return moveDeltaTime;
+            }
+            _isMoving = false;
+            SelectUnit(_selectedUnit);
         }
     }
+
 }

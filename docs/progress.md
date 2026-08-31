@@ -9,7 +9,7 @@
 3. 执行对话每完成一个任务，更新 docs/progress.md（做了什么、结果、阻塞点）。
 4. 两个对话看到对方更新的文件时，以文件内容为最新事实。
 
-## 当前状态：W2.3 进行中（任务卡已发）
+## 当前状态：W2.3 评审完成，待修复 3 项
 
 ## 里程碑
 ### W1（完成）
@@ -24,15 +24,20 @@
 - 单位渲染 + 选中框（独立对象 + SetActive）
 
 ### W2.2（完成）
-- GetReachableTiles：带代价扩散（松弛），返回 Dictionary<HexCoord, int>（剩余移动力）
+- GetReachableTiles：带代价扩散（松弛），返回可达集合
 - 单测：平原 19 格可达、山阻断
 - 表现层重构：HandleClick 单入口 + SelectUnit / ClearSelection / ShowRange；范围对象预创建 64 个 + 全量重置（幂等）
-- 评审修复：去掉 unitReachableHex 缓存（每次现算）；出生点改用 Walkable（避免落在山上）
+- 评审修复：去掉可达范围缓存；出生点改用 Walkable
 
-### W2.3（进行中）
-- 任务：A* 路径移动 + 移动力消耗 + 数据/表现关联（Unit ↔ GameObject）
-- 关键点：GameState.MoveUnit 校验与扣减；MapView 加 _selectedUnit 与 Unit→GameObject 映射；移动后刷新范围
-- 待办：移动逻辑 + 单测（可选）
+### W2.3（评审完成，待修复）
+- ✅ A* 重写：PriorityQueue + PathResult(Found/Path/Cost)，正确性 OK
+- ✅ MoveUnit（Core）：校验可达 + 占位 + 寻路 + 扣移动力 + 更新位置
+- ✅ 表现层：_selectedUnit、Unit→GameObject 映射、右键移动、移动后刷新
+- ⚠️ 待修复：
+  1. GameState 混入 UnityEngine（Debug.Log），违反 Core 零依赖 → 改返回 MoveResult 结果对象，表现层反馈
+  2. MapView.MoveUnit 忽略返回值（失败也刷新/更新），且 tmp 未使用 → 按结果处理
+  3. 无新单测 → 补 Pathfinding + MoveUnit（移动力扣减）测试
+- 📝 备注：右键移动与相机右键拖拽冲突（后续处理）；单位逐格动画留打磨期
 
-### W3+（待开始）
+### W3（待开始）
 - 城市、生产、科技；回合系统；战斗与胜负；联机

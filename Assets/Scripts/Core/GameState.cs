@@ -2,8 +2,6 @@ using SparkAge.Core.Hex;
 using SparkAge.Core.Map;
 using SparkAge.Core.Units;
 using System.Collections.Generic;
-using System;
-using UnityEngine;
 
 namespace SparkAge.Core
 {
@@ -93,38 +91,36 @@ namespace SparkAge.Core
             return new List<HexCoord>(movementLeftDic.Keys);
         }
 
-        //public enum MoveFailReason { Success, TileOccupied, Unreachable }
-        //public readonly struct MoveResult
-        //{
-        //    public readonly bool Success;
-        //    public readonly MoveFailReason Reason;     // 枚举：None / TileOccupied / Unreachable
-        //    public readonly List<HexCoord> Path;       // 成功时有效（不含起点）
-        //}
-        public List<HexCoord> MoveUnit(Unit unit, HexCoord tarHex)
+        public enum MoveFailReason { Success, TileOccupied, Unreachable }
+        public readonly struct MoveResult
         {
-            if (!GetReachableTiles(unit).Contains(tarHex))
+            public readonly bool Success;
+            public readonly MoveFailReason Reason;     // 枚举：Success / TileOccupied / Unreachable / NoPath
+            public readonly List<HexCoord> Path;       // 成功时有效（不含起点）
+            public MoveResult(bool success, MoveFailReason reason, List<HexCoord> path)
             {
-                Debug.Log("当前地块不可到达");
-                return null;
+                Success = success;
+                Reason = reason;
+                Path = path;
             }
-            if(GetUnitAt(tarHex) != null)
-            {
-                Debug.Log("当前地块已存在单位");
-                return null;
-            }
+        }
+        public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
+        {
+
+            if (!GetReachableTiles(unit).Contains(tarHex)) 
+                return new MoveResult(false, MoveFailReason.Unreachable, null);
+            if (GetUnitAt(tarHex) != null)
+                return new MoveResult(false, MoveFailReason.TileOccupied, null);
 
             PathResult pathRes = Pathfinding.FindPath(unit.Position, tarHex,
                 hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
 
             if (!pathRes.Found)
-            {
-                Debug.Log("未找到可移动路径");
-                return null;
-            }
+                return new MoveResult(false, MoveFailReason.Unreachable, null);
 
             unit.MovementLeft -= pathRes.Cost;
             unit.Position = tarHex;
-            return pathRes.Path;
+            return new MoveResult(true, MoveFailReason.Success, pathRes.Path);
         }
     }
 }
