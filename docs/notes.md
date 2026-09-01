@@ -17,27 +17,44 @@
 7. **相机拖动**：抓取点模式（避免采样反馈振荡）。
 8. **单位出生点**：BFS 从中心向外找第一个可行走格子（占位规则，独立成方法，将来可替换）。
 9. **移动范围**：带地形代价的扩散（松弛思想），不是普通 BFS。
-10. **选择逻辑**：收敛为 SelectUnit / ClearSelection 两个操作；"显示范围"幂等（先全隐藏再显示），避免"记住上次"的补丁变量。
-11. **范围高亮对象**：预创建 + 开关（固定容量池）；通用 GameObjectPool 留给以后弹幕/特效/单位生成。
-12. **不缓存可达范围**：每次选中现算（20×20 成本低），避免移动后脏数据。
-13. **Core 层零 UnityEngine（W2.3 评审）**：Debug.Log 也不行。失败用"结果对象"表达（如 MoveResult + 失败原因枚举），表现层负责打印/反馈。
-14. **移动交互（W2.3 评审）**：当前右键移动与相机右键拖拽冲突，后续考虑左键移动（选中后点目标）或拖拽阈值区分点击/拖拽。
+10. **选择逻辑**：收敛为 SelectUnit / ClearSelection；"显示范围"幂等（先全隐藏再显示），避免补丁变量。
+11. **范围高亮对象**：预创建 + 开关（固定容量池）；通用 GameObjectPool 留给以后。
+12. **不缓存可达范围**：每次选中现算，避免移动后脏数据。
+13. **Core 层零 UnityEngine**：Debug.Log 也不行。失败用结果对象表达（MoveResult + 失败原因），表现层负责反馈。
+14. **移动交互**：右键移动与相机右键拖拽冲突，后续考虑左键移动或拖拽阈值。
+15. **测试策略（W2.3）**：求职 demo 优先功能迭代，新单测延后到 W6 集中补齐；但已有测试必须保持有效（有断言、全绿），防止"假绿"。
 
 ## 待讨论 / 未来
 - 联机：主机权威 + 状态同步（GameState 是同步单位）；Photon PUN2 或 NGO + Relay。
-- W6 美术：邻居感知渲染、URP 2D 光照；目标"Polytopia 级"，不追文明6 3D 画面。
+- W6 美术：邻居感知渲染、URP 2D 光照；目标"Polytopia 级"。
 - 单位逐格移动动画（协程沿 Path 走）留到打磨期。
 
-## 问答记录：MoveResult 如何到表现层（2026-08-31）
-- MoveResult 就是普通返回值：Core 的 GameState.MoveUnit 返回它，表现层 MapView 直接接收并 switch。
-- 定义放 Core（SparkAge.Core），MapView 已 using SparkAge.Core 可直接用。
-- 失败时 Path 给空列表非 null；表现层 Success 才用 Path 播动画，否则按 Reason 提示。
-## 问答记录：移动动画期间禁止点击（2026-08-31）
-- 方案：MapView 加 bool _isMoving；移动开始置 true，动画协程结束置 false；Update() 开头 `if (_isMoving) return;` 同时挡住左键选中与右键移动。
-- 建议：移动成功后在动画结束后再 SelectUnit 刷新范围；协程内用 `yield return StartCoroutine(UnitMoveAnimation(...))` 链式等待。
-## 问答记录：MoveUnit / FindPath 单测写法（2026-08-31）
-- 原则：期望值手工算好、确定性地图（不要 Random）；3A 结构（准备-执行-断言）；一个用例断言一类行为。
-- FindPath 用例：平原直线（路径/代价）、森林累计代价、山堵路绕行、起点被困不可达、goal==start。
-- MoveUnit 用例：成功（扣 1）、超出移动力（Unreachable 且状态不变）、目标被占（TileOccupied）、森林扣 2。
-- 运行：Unity Test Runner → EditMode → Run All；测试放 Assets/Editor/Tests。
-- 注意：用户现有 FindPathTests/MoveUnitTests 是复制的空壳（含 Random 地图），需替换为确定性用例。
+## 问答记录：W3.0 拆分 MapView 的整体思路（2026-08-31）
+- 任务本质：按职责把"什么都干"的 MapView 拆成 MapView(协调+地图渲染) / UnitView / SelectionController，纯搬代码、行为零变化。
+- 通用拆法：①列出字段方法按职责分组 ②数据跟着职责走 ③定依赖方向（MapView 协调者注入 _state/hexSize，Selection/UnitView 不互相依赖）④搬方法修引用 ⑤编译+手测验收。
+- 分配：地图渲染/相机/GetTerrainColor 留 MapView；单位创建、_unitObjs、移动动画去 UnitView；选中、高亮、范围、_selectedUnit 去 SelectionController。
+- 注意：当前 SelectionController 是半成品——引用了 _state/_highlight/reachableHex 等不存在的字段，编译不过；拆时字段必须跟着方法一起搬，依赖由 MapView 注入。
+## 问答记录：W3.0 拆分方案（细化版，2026-09-01）
+- 原则：每个字段只有一个"家"；共享字段由 MapView 配置/创建后**构造函数注入**给子类，子类不重复持有 [SerializeField]。
+- 字段归属：
+  - MapView：seed、hexSize、地形色×4、_hexSprite、_state、_isMoving、moveDeltaTime、地图渲染/相机方法
+  - UnitView：_unitSprite、_unitObjs、Spawn/Animate；注入(hexSize, unitSprite)
+  - SelectionController：_selectedUnit、_highlight、_unitHighlight、高亮色×3、_unitHighlightSprite、_reachableSprite、reachableHex、reachableObjs、选中/范围方法；注入(state, hexSize, hexSprite)；_selectedUnit 用属性暴露给 MapView
+- 注意：SelectionController 离开 MonoBehaviour 后 print 要改 Debug.Log。
+## 问答记录：3D 化可行性评估（2026-09-01）
+- 结论：现在改是最佳时机，工作量不大——Core（Hex/寻路/移动/GameState）零改动，全部复用；表现层 4-5 个文件重写，纯功能约 1-2 天，美术资产另算。
+- 最省力路线：俯视角 3D 棋盘（不是自由相机）——HexLayout 只在 XZ 平面工作、地块换 3D 六棱柱、高亮用贴地半透明平面、相机保持正交/弱透视。改动最小。
+- 主要成本在美术：3D 六棱柱 + 单位低模 + 材质光照；求职 demo 建议 blockout/低模风格控制成本。
+## 3D 迁移决策（2026-09-01）
+16. **项目改为 3D（更贴近文明6）**，经另一对话确认。原则：
+    - Core 层零改动（Hex 数学/MapData/GameState/Unit/Pathfinding/单测 全部不动）——分层的红利在此兑现。
+    - 只迁移 Game 表现层：HexSpriteFactory → HexMeshFactory（程序化六边形 Mesh）；单位用内置 3D 图元占位；高亮/范围用半透明 3D Mesh。
+    - 坐标：HexToPixel(x,y) → 3D (x, 0, y)；拾取改为"射线 + y=0 平面求交"（Plane.Raycast），再 PixelToHex。
+    - 相机：Perspective 俯视，缩放=调高度/FOV，平移沿用抓取点模式。
+    - 现阶段不做：相机旋转、地形高度起伏（y=0）、真实模型（占位图元，美术 W6）。
+    - 顺序：先完成 W3.0 拆分，再逐组件 3D 化，再清理 2D 残留，最后回归验证（单测+手动）。
+17. **表现层组件用 MonoBehaviour（W3.0 修正）**：需要生命周期（协程/Update/OnEnable）的 Game 层组件用 MonoBehaviour，用运行时 `new GameObject(...).AddComponent<T>()` + Init 创建，避免 Inspector 布线；Core 层保持纯 C# 不变。普通类 + 手动 Tick（由 MonoBehaviour 每帧调用）是"显式更新"的可测试替代方案，记入备选。
+
+## 问答记录：_isMoving 的归属与跨类使用（2026-09-01）
+- 方案A（最贴合当前结构）：_isMoving 留在 UnitView（private），公开只读属性 `IsMoving`，MapView.Update 读它挡输入。
+- 方案B（更干净）：_isMoving 归 MapView，UnitView 只提供协程方法，动画完成用回调 `Action onDone` 通知 MapView 解锁。二选一即可。

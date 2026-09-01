@@ -20,6 +20,7 @@ public class GameStateTests
         var state = MakeMap();
         HexCoord start = new HexCoord(2, 2);
         var res = state.GetReachableTiles(UnitAt(start, 2));
+        Assert.AreEqual(19, res.Count);
     }
 
     [Test]

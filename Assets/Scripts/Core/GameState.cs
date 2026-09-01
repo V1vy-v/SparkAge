@@ -104,6 +104,12 @@ namespace SparkAge.Core
                 Path = path;
             }
         }
+        /// <summary>
+        /// 数据层：单位移动
+        /// </summary>
+        /// <param name="unit"></param>
+        /// <param name="tarHex"></param>
+        /// <returns></returns>
         public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
         {
 

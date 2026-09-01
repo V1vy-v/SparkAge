@@ -2,68 +2,54 @@ using SparkAge.Core;
 using SparkAge.Core.Hex;
 using SparkAge.Core.Map;
 using SparkAge.Core.Units;
-using System.Collections;
-using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
-using static SparkAge.Core.GameState;
 
 namespace SparkAge.Game
 {
     /// <summary>
-    /// 地图的"显示器"：把 Core 里的 MapData 画到屏幕上。
-    /// 数据在 MapData，这里只管"显示"和"把点击翻译成门牌号"。
+    /// 地图的表现层
     /// </summary>
     public class MapView : MonoBehaviour
     {
-        [SerializeField] float hexSize = 1f;//单位大小
         [SerializeField] int seed;
+        [SerializeField] float hexSize = 1f;//单位大小
         [SerializeField] Color plainColor = new Color(0.45f, 0.75f, 0.45f);          // 平原的绿色（alpha 默认 1）
         [SerializeField] Color forestColor = new Color(0.0f, 0.45f, 0.0f);           // 森林的深绿色
         [SerializeField] Color mountainColor = new Color(0.55f, 0.27f, 0.07f);       // 山峦的褐色
         [SerializeField] Color waterColor = new Color(0.0f, 0.75f, 1.0f);            // 水域的天蓝色
-        [SerializeField] Color highlightColor = new Color(1f, 1f, 0f, 0.5f);         // 高亮的黄色（半透明）
-        [SerializeField] Color unitHighlightColor = new Color(1f, 0f, 0f, 0.8f);     // 红色（略微半透明，以便叠加）
-        [SerializeField] Color reachableColor = new Color(0f, 0f, 0.6f, 0.7f);       // 深蓝色（半透明）
 
-        GameState _state;//游戏世界状态（含地图与单位数据）
         Sprite _hexSprite;//地块精灵
-        Sprite _unitSprite;//单位精灵
-        Sprite _unitHighlightSprite;//单位选中框精灵
-        Sprite _reachableSprite;//单位可到达地块精灵
-        SpriteRenderer _highlight;//地块高亮渲染器
-        SpriteRenderer _unitHighlight;//单位选中框渲染器
+        GameState _state;//游戏世界状态（含地图与单位数据）
+        UnitView _unitView;//单位控制类
+        SelectionController _selection;//鼠标选中控制类
 
-        List<HexCoord> reachableHex = new();//当前单位可移动范围
-        List<GameObject> reachableObjs = new List<GameObject>(128);//可移动范围对象
-
-        Unit _selectedUnit;//当前选中的单位
-        Dictionary<Unit, GameObject> _unitObjs = new Dictionary<Unit, GameObject>();// 单位->游戏对象的映射
+        bool _isMoving = false;//为true时屏蔽点击
 
         private void Awake()
         {
-            _state = new GameState(MapGenerator.Generate(20, 20, seed));
             _hexSprite = HexSpriteFactory.CreateHexSprite(128, Color.white);
-            _unitSprite = HexSpriteFactory.CreateHexSprite(32, Color.white);
-            _reachableSprite = HexSpriteFactory.CreateHexCircleSprite(122, Color.white);
-            _unitHighlightSprite = HexSpriteFactory.CreateHexCircleSprite(122, Color.white);
+            _state = new GameState(MapGenerator.Generate(20, 20, seed));
+
+            _unitView = gameObject.AddComponent<UnitView>();
+            _unitView.Init(_state, hexSize);
+
+            _selection = gameObject.AddComponent<SelectionController>();
+            _selection.Init(_state, hexSize, _hexSprite);
         }
         private void Start()
         {
             //创建地图和高亮资源，摄像机初始定位，范围对象
             BuildTiles();
-            BuildHighlight();
             CenterCameraOnMap();
-            BuildReachableObj();
 
             //创建单位
             HexCoord? spawnPoint = _state.FindSpawnPoint(_state.Map.Center);
             if (spawnPoint != null)
             {
-                GameObject obj = BuildUnit((HexCoord)spawnPoint);
+                GameObject obj = _unitView.BuildUnit((HexCoord)spawnPoint);
                 Unit unit = new Unit((HexCoord)spawnPoint, 0, 3, 3);
                 _state.Units.Add(unit);
-                _unitObjs[unit] = obj;
+                _unitView.UnitObjs[unit] = obj;
             }
             else
                 print("创建单位出生点失败！！！");
@@ -71,10 +57,10 @@ namespace SparkAge.Game
             spawnPoint = _state.FindSpawnPoint(new HexCoord(0, 0));
             if (spawnPoint != null)
             {
-                GameObject obj = BuildUnit((HexCoord)spawnPoint);
+                GameObject obj = _unitView.BuildUnit((HexCoord)spawnPoint);
                 Unit unit = new Unit((HexCoord)spawnPoint, 0, 4, 4);
                 _state.Units.Add(unit);
-                _unitObjs[unit] = obj;
+                _unitView.UnitObjs[unit] = obj;
             }
             else
                 print("创建单位出生点失败！！！");
@@ -85,13 +71,13 @@ namespace SparkAge.Game
 
             if (Input.GetMouseButtonDown(0))
             {
-                HandleClick();
+                _selection.HandleClick();
             }
-            if (Input.GetMouseButtonDown(1) && _selectedUnit != null)
+            if (Input.GetMouseButtonDown(1) && _selection.SelectedUnit != null)
             {
-                HexCoord? hex = GetClickHex();
-                if(hex != null)
-                    MoveUnit(_selectedUnit, (HexCoord)hex);
+                HexCoord? hex = _selection.GetClickHex();
+                if (hex != null)
+                    _unitView.MoveUnit(_selection.SelectedUnit, (HexCoord)hex, _selection.SelectUnit, (isMoving) => _isMoving = isMoving);
             }
         }
         /// <summary>
@@ -110,166 +96,6 @@ namespace SparkAge.Game
                 obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize);
             }
         }
-        /// <summary>
-        /// 创建高亮六边形对象和单位选中框
-        /// </summary>
-        private void BuildHighlight()
-        {
-            //单块选中高亮
-            GameObject obj = new GameObject("highlight");
-            _highlight = obj.AddComponent<SpriteRenderer>();
-            _highlight.color = highlightColor;
-            _highlight.sprite = _hexSprite;
-            _highlight.sortingOrder = 10;
-            //初始隐藏
-            obj.SetActive(false);
-
-            //单位选中框
-            obj = new GameObject("unitHighlight");
-            _unitHighlight = obj.AddComponent<SpriteRenderer>();
-            _unitHighlight.color = unitHighlightColor;
-            _unitHighlight.sprite = _unitHighlightSprite;
-            _unitHighlight.sortingOrder = 20;
-            //初始隐藏
-            obj.SetActive(false);
-        }
-        /// <summary>
-        /// 创建单位对象
-        /// </summary>
-        public GameObject BuildUnit(HexCoord point)
-        {
-            GameObject unitObj = new GameObject($"Unit");
-            SpriteRenderer sr = unitObj.AddComponent<SpriteRenderer>();
-            sr.sprite = _unitSprite;
-            sr.color = Color.red;
-            sr.sortingOrder = 11;
-
-            unitObj.transform.position = HexLayout.HexToPixel(point, hexSize);
-            return unitObj;
-        }
-        /// <summary>
-        /// 预创建64个移动范围对象
-        /// </summary>
-        /// <param name="point"></param>
-        public void BuildReachableObj()
-        {
-            GameObject reachableObj;
-            for(int i = 0; i < 64; i++)
-            {
-                reachableObj = new GameObject("reachableTile");
-                SpriteRenderer sr = reachableObj.AddComponent<SpriteRenderer>();
-                sr.sprite = _reachableSprite;
-                sr.color = reachableColor;
-                sr.sortingOrder = 5;
-                reachableObj.SetActive(false);
-
-                reachableObjs.Add(reachableObj);
-            }
-        }
-
-
-        /// <summary>
-        /// 鼠标点击总入口，关联点击高亮、单位选中、移动范围显示
-        /// </summary>
-        private void HandleClick()
-        {
-            HexCoord? clickHex = GetClickHex();
-            //地块高亮的逻辑
-            ShowHighlight(clickHex);
-
-            if (clickHex == null)
-            {
-                ClearSelection();
-                return;
-            }
-            //在地图内:
-            //是否选中单位
-            Unit clickUnit = _state.GetUnitAt((HexCoord)clickHex);
-            if (clickUnit != null)
-                SelectUnit(clickUnit);
-            else
-                ClearSelection();
-        }
-        /// <summary>
-        /// 获取点击处地块Hex
-        /// </summary>
-        /// <returns></returns>
-        private HexCoord? GetClickHex()
-        {
-            Vector3 clickPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            HexCoord clickHex = HexLayout.PixelToHex(new Vector2(clickPos.x, clickPos.y), hexSize);
-
-            if (_state.Map.IsInMap(clickHex))
-                return clickHex;
-            //不在地图内，无高亮
-            return null;
-        }
-        /// <summary>
-        /// 控制地块高亮：移动高亮对象
-        /// </summary>
-        private void ShowHighlight(HexCoord? clickHex)
-        {
-            if (clickHex != null)
-            {
-                _highlight.transform.position = HexLayout.HexToPixel((HexCoord)clickHex, hexSize);
-                _highlight.gameObject.SetActive(true);
-            }
-            else
-                _highlight.gameObject.SetActive(false);
-        }
-        /// <summary>
-        /// 实现点击选中单位和显示可移动范围
-        /// </summary>
-        private void SelectUnit(Unit unit)
-        {
-            //高亮选中框
-            _unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize);
-            _unitHighlight.gameObject.SetActive(true);
-
-            //计算可移动范围
-            reachableHex = _state.GetReachableTiles(unit);
-
-            //显示移动范围
-            ShowRange(reachableHex);
-
-            //选中单位对象
-            _selectedUnit = unit;
-
-            print("当前单位剩余移动力：" + unit.MovementLeft);
-        }
-        /// <summary>
-        /// 隐藏选中框和范围对象
-        /// </summary>
-        private void ClearSelection()
-        {
-            //隐藏选中框
-            _unitHighlight.gameObject.SetActive(false);
-            //隐藏所有范围对象
-            for (int i = 0; i < reachableObjs.Count; i++)
-                reachableObjs[i].gameObject.SetActive(false);
-            //清除选中对象
-            _selectedUnit = null;
-        }
-        /// <summary>
-        /// 刷新可到达范围：先隐藏再显示
-        /// </summary>
-        /// <param name="reachableHex"></param>
-        private void ShowRange(List<HexCoord> reachableHex)
-        {
-            //隐藏所有范围对象
-            foreach(var obj in reachableObjs)
-                obj.SetActive(false);
-            //显示可到达范围对象
-            int i = 0;
-            foreach(var hex in reachableHex)
-            {
-                reachableObjs[i].SetActive(true);
-                reachableObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize);
-                i++;
-            }
-
-        }
-
 
         /// <summary>
         /// 摄像机位置初始化：地图中央
@@ -288,7 +114,6 @@ namespace SparkAge.Game
             return (HexLayout.HexToPixel(new HexCoord(_state.Map.Width - 1, _state.Map.Height - 1), hexSize),
                 HexLayout.HexToPixel(new HexCoord(0, 0), hexSize));
         }
-
         /// <summary>
         /// 根据地形设置颜色，表现层职责
         /// </summary>
@@ -311,43 +136,6 @@ namespace SparkAge.Game
             }
         }
      
-        private bool _isMoving = false;
-        /// <summary>
-        /// 单位移动
-        /// </summary>
-        /// <param name="unit"></param>
-        /// <param name="tarHex"></param>
-        public void MoveUnit(Unit unit, HexCoord tarHex)
-        {
-            MoveResult result = _state.MoveUnit(unit, tarHex);
-            if (!result.Success)
-            {
-                Debug.Log(result.Reason == MoveFailReason.Unreachable ? "目标不可达" : "该格已有单位");
-                return;    // 失败：不移动、不刷新
-            }
-
-            _isMoving = true;
-            StartCoroutine(MoveSequence(_unitObjs[unit], result.Path));
-        }
-
-        private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
-        /// <summary>
-        /// 单位移动协程，移动动画
-        /// </summary>
-        /// <param name="obj"></param>
-        /// <param name="path"></param>
-        /// <returns></returns>
-        IEnumerator MoveSequence(GameObject obj, List<HexCoord> path)
-        {
-            yield return null;
-            foreach(HexCoord hex in path)
-            {
-                obj.transform.position = HexLayout.HexToPixel(hex, hexSize);
-                yield return moveDeltaTime;
-            }
-            _isMoving = false;
-            SelectUnit(_selectedUnit);
-        }
     }
 
 }
