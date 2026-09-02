@@ -13,12 +13,21 @@ namespace SparkAge.Game
     {
         [SerializeField] int seed;
         [SerializeField] float hexSize = 1f;//单位大小
-        [SerializeField] Color plainColor = new Color(0.45f, 0.75f, 0.45f);          // 平原的绿色（alpha 默认 1）
-        [SerializeField] Color forestColor = new Color(0.0f, 0.45f, 0.0f);           // 森林的深绿色
-        [SerializeField] Color mountainColor = new Color(0.55f, 0.27f, 0.07f);       // 山峦的褐色
-        [SerializeField] Color waterColor = new Color(0.0f, 0.75f, 1.0f);            // 水域的天蓝色
 
-        Sprite _hexSprite;//地块精灵
+        [SerializeField] Material plainMaterial;
+        [SerializeField] Material forestMaterial;
+        [SerializeField] Material mountainMaterial;
+        [SerializeField] Material waterMaterial;
+        public Material GetMaterial(TerrainType type) => type switch
+        {
+            TerrainType.Plain => plainMaterial,
+            TerrainType.Forest => forestMaterial,
+            TerrainType.Mountain => mountainMaterial,
+            TerrainType.Water => waterMaterial,
+            _ => plainMaterial
+        };
+
+        Mesh _hexMesh;//地块网格
         GameState _state;//游戏世界状态（含地图与单位数据）
         UnitView _unitView;//单位控制类
         SelectionController _selection;//鼠标选中控制类
@@ -27,20 +36,20 @@ namespace SparkAge.Game
 
         private void Awake()
         {
-            _hexSprite = HexSpriteFactory.CreateHexSprite(128, Color.white);
             _state = new GameState(MapGenerator.Generate(20, 20, seed));
+            _hexMesh = HexMeshFactory.CreateHexMesh(hexSize);
+            EnsureMaterials();
 
             _unitView = gameObject.AddComponent<UnitView>();
             _unitView.Init(_state, hexSize);
 
             _selection = gameObject.AddComponent<SelectionController>();
-            _selection.Init(_state, hexSize, _hexSprite);
+            _selection.Init(_state, hexSize, _hexMesh);
         }
         private void Start()
         {
-            //创建地图和高亮资源，摄像机初始定位，范围对象
+            //创建地图和高亮资源，范围对象
             BuildTiles();
-            CenterCameraOnMap();
 
             //创建单位
             HexCoord? spawnPoint = _state.FindSpawnPoint(_state.Map.Center);
@@ -88,54 +97,53 @@ namespace SparkAge.Game
             foreach(var tile in _state.Map.Tiles.Values)
             {
                 GameObject obj = new GameObject($"tile {tile.Coord.R}, {tile.Coord.Q}");
-                SpriteRenderer sr = obj.AddComponent<SpriteRenderer>();
-                sr.color = GetTerrainColor(tile.Type);
-                sr.sprite = _hexSprite;
-                sr.sortingOrder = 0;
+                MeshFilter mf = obj.AddComponent<MeshFilter>();
+                mf.mesh = _hexMesh;
+                MeshRenderer mr = obj.AddComponent<MeshRenderer>();
+                mr.material = GetMaterial(tile.Type);
 
-                obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize);
+                obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize, 0);
             }
         }
-
         /// <summary>
-        /// 摄像机位置初始化：地图中央
+        /// 确认材质已创建
         /// </summary>
-        private void CenterCameraOnMap()
+        private void EnsureMaterials()
         {
-            Vector2 center = HexLayout.HexToPixel(new HexCoord(_state.Map.Width / 2, _state.Map.Height / 2), hexSize);
-            Camera.main.transform.position = new Vector3(center.x, center.y, -10f);
+            if (plainMaterial == null)
+                plainMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new UnityEngine.Color(0.45f, 0.75f, 0.45f)
+                };
+            if (forestMaterial == null)
+                forestMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new UnityEngine.Color(0f, 0.45f, 0f)
+                };
+            if (mountainMaterial == null)
+                mountainMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new UnityEngine.Color(0.55f, 0.27f, 0.07f)
+                };
+            if (waterMaterial == null)
+                waterMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = new UnityEngine.Color(0f, 0.75f, 1f)
+                };
         }
+
         /// <summary>
         /// 获取地图边界：左下和右上端点
         /// </summary>
         /// <returns></returns>
-        public (Vector2, Vector2) GetMapBounds()
+        public (Vector3, Vector3, Vector3) GetMapCenterAndBounds()
         {
-            return (HexLayout.HexToPixel(new HexCoord(_state.Map.Width - 1, _state.Map.Height - 1), hexSize),
-                HexLayout.HexToPixel(new HexCoord(0, 0), hexSize));
+            Vector3 center = HexLayout.HexToPixel(new HexCoord(_state.Map.Width / 2, _state.Map.Height / 2), hexSize, 0);
+            Vector3 bound1 = HexLayout.HexToPixel(new HexCoord(_state.Map.Width - 1, _state.Map.Height - 1), hexSize, 0);
+            Vector3 bound2 = HexLayout.HexToPixel(new HexCoord(0, 0), hexSize, 0);
+            return (center, bound1, bound2);
         }
-        /// <summary>
-        /// 根据地形设置颜色，表现层职责
-        /// </summary>
-        /// <param name="terrainType"></param>
-        /// <returns></returns>
-        public Color GetTerrainColor(TerrainType terrainType)
-        {
-            switch(terrainType)
-            {
-                case TerrainType.Plain:
-                    return plainColor;
-                case TerrainType.Forest:
-                    return forestColor;
-                case TerrainType.Mountain:
-                    return mountainColor;
-                case TerrainType.Water:
-                    return waterColor;
-                default:
-                    return plainColor;
-            }
-        }
-     
+
     }
 
 }

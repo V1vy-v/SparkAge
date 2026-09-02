@@ -58,3 +58,45 @@
 ## 问答记录：_isMoving 的归属与跨类使用（2026-09-01）
 - 方案A（最贴合当前结构）：_isMoving 留在 UnitView（private），公开只读属性 `IsMoving`，MapView.Update 读它挡输入。
 - 方案B（更干净）：_isMoving 归 MapView，UnitView 只提供协程方法，动画完成用回调 `Action onDone` 通知 MapView 解锁。二选一即可。
+## 问答记录：地块为什么仍代码创建而非预制体（2026-09-02，3D 化期间）
+- 结论：没有美术素材时做预制体 = 存占位内容，美术到位还得重做，做两遍。换美术的改动面只需一个创建点（BuildTiles），代码创建 ≠ 难换素材。
+- 预制体用于"复杂配置 + 手工调参 + 内容固定"；地块是程序化 + 数据驱动颜色 + 简单组件，无可预设内容。
+- 3D 化时：BuildTiles 换成生成 3D 六棱柱（或之后 Instantiate 预制体），创建点不变；3D 地形更常用"动态合并 Mesh"而非 400 个预制体。
+- 正确抽象是"创建点唯一"，不是"提前预制体化"。
+## 问答记录：3D 化是否要改 HexToPixel（2026-09-02）
+- 结论：六边形数学不变，不需要改 HexToPixel 算法/签名（单测 PixelRoundTrip 依赖它）。
+- 做法：新增 HexToWorld(hex, size) 返回 Vector3（或表现层包一层 new Vector3(v.x,v.y,0)）；先定棋盘平面（XY=最小改动沿用现相机 / XZ=更 3D 需俯视相机）。
+- 反向换算 GetClickHex 也要改：3D 下用 射线+Plane.Raycast 投影到棋盘平面，不能再用 ScreenToWorldPoint。
+- 备注：progress.md 里 W3.0b-2 任务卡内容被 `n 弄乱缺失，需执行对话重新整理。
+## 问答记录：3D 斜俯视相机控制（2026-09-02）
+- 标准做法：target(关注点) + distance + pitch(俯仰角) + yaw(水平角)，每帧 `rotation = Euler(pitch,yaw,0); position = target - forward*distance`。
+- 交互：滚轮调 distance（clamp）、拖拽平移 target（Plane.Raycast 投影到地面）、可选 Q/E 转 yaw；pitch 限制 10°~80° 防穿地。
+- 用 LateUpdate；初始 target 取 HexToWorld(地图中心)。
+## 问答记录：3D 相机 z 锁死 + 滚轮无效排查（2026-09-02）
+- Bug1（z 锁死）：CameraMove 里用 `bottomLeft.y / topRight.y` 夹 z 值——平地图 y 恒 0，clamp 后恒 0 → 相机 z 被锁死。应改用 `.z`。
+- Bug2（滚轮无效）：PerspectiveZoom 只改 distance，没重算 `transform.position = target - forward*distance`，相机没动。
+- 次要：clamp 基准应为 target 而非 transform.position（否则相机偏移混入 target）。
+## 问答记录：3D 化后点击无反应排查（2026-09-02）
+- 主要嫌疑1：CreateHexMesh 顶点在 XY 平面（z=0），而棋盘摆放在 XZ 平面（y=height）→ 地块/高亮全部是"竖着的纸片"，俯视相机几乎看不见 → 点起来"没反应"（其实高亮不可见）。
+  - 修复：mesh 顶点改到 XZ 平面（y=0），法线 Vector3.up。
+- 嫌疑2：MapView.Awake 里 _hexMesh 还没创建就传给 _selection.Init（null）→ 地块高亮 mesh=null 不可见。应先建共享 mesh 再 Init。
+- 顺带：BuildTiles 每格 new 一个 Mesh+Material（400 份），应共享。
+- 排查方法：点单位看 Console 是否打印"剩余移动力"——有=逻辑通（渲染问题）；无=GetClickHex 返回 null 或 _isMoving 卡 true。
+## 问答记录：TerrainType→Color / TerrainType→Material 两个字典是否合适（2026-09-02）
+- 结论：不合适——Material 的颜色派生自 tile color，两份数据存在"改一处不同步"风险，应单一数据源二选一。
+- 方向1（代码生成材质）：只保留 tileColors（或 4 个 SerializeField），Init 时据此生成 4 个材质模板，不再单独存材质字典之外的颜色。
+- 方向2（材质即资产）：只建 _hexMeshMaterials，颜色从材质读。
+- 补充：连续枚举建议用数组 `Material[4]` 而非 Dictionary（无哈希开销、可序列化）；Unity 不能直接序列化 Dictionary。
+## 问答记录：地形视觉的确定方案（2026-09-02，为将来美术素材预留）
+- 确定做法：删除 Color 字典和 GetTerrainColor switch；表现层持有一个 `Material[4]`（下标=TerrainType），Inspector 直接拖 4 个材质，null 时代码生成占位 URP 材质。
+- BuildTiles 用 `materials[(int)tile.Type]`。
+- 换美术路径：只换 Inspector 里的材质（贴图/模型材质）；若换 3D 地块模型，把该表升级为 TerrainType→prefab 并让 BuildTiles 改 Instantiate——升级都从这个单一映射表出发，代码别处不动。
+## 问答记录：不用枚举做键的确定写法（2026-09-02）
+- 结论：地形固定且少（4 种）时，放弃字典/枚举下标数组，用"4 个 SerializeField + 一个 GetMaterial(TerrainType) switch 表达式"，零 (int) 强转、Inspector 直观。
+- 未来地形变多/数据驱动时再升级为 List<TerrainMaterialEntry{Type,Material}>，Awake 构建运行时字典。
+- 换美术=只换字段里的材质引用，逻辑不动。
+## 问答记录：网格存在但不显示（2026-09-02）
+- 根因：三角形绕序反了。HexMeshFactory 的 triangles = {0,2,1, 0,3,2, 0,4,3, 0,5,4}，叉积算出几何法线朝 -Y（朝下），而相机在 +Y 上方 → 看到的是背面，被背面剔除 → 不渲染。
+- 修复：每三个索引反转 → {0,1,2, 0,2,3, 0,3,4, 0,4,5}。
+- 验证：Scene 里开 Cull Off 或显示法线；修复后地块朝上即可见。
+- 顺带：MapView 有多余的 `using System.Drawing;`（会和 UnityEngine.Color 冲突/编译风险），删掉。

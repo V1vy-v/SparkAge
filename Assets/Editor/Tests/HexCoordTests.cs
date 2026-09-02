@@ -23,7 +23,7 @@ public class HexCoordTests
     public void PixelRoundTrip_ReturnsSameHex()
     {
         var h = new HexCoord(2, -3);
-        var p = HexLayout.HexToPixel(h, 1f);
+        var p = HexLayout.HexToPixel(h, 1f, 0.5f);
         Assert.AreEqual(h, HexLayout.PixelToHex(p, 1f));
     }
 }

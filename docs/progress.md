@@ -9,7 +9,7 @@
 3. 执行对话每完成一个任务，更新 docs/progress.md（做了什么、结果、阻塞点）。
 4. 两个对话看到对方更新的文件时，以文件内容为最新事实。
 
-## 当前状态：W3.0 完成 → W3.0b-1 进行中（3D 工程切换）
+## 当前状态：W3.0b-1 完成 → W3.0b-2 进行中（3D 化主体）
 
 ## 里程碑
 ### W1（完成）
@@ -32,12 +32,15 @@
   2. 恢复 Plains_Movement2_ReachesAllWithinDistance2 的断言（当前"假绿"）
 - 📝 备注：右键移动与相机拖拽冲突（后续处理）；单位逐格动画留打磨期
 
-### W3.0（完成）`n- 任务：把 MapView 拆成 MapView（协调者+地图渲染）/ UnitView / SelectionController，纯搬代码、行为零变化`n`n### W3.1（待开始）
+### W3.0（完成）
+### W3.0b-1（完成）
+- 切换到 3D URP 管线（URP3D + Universal Renderer）、Directional Light、2D 灯光清理`n- 任务：把 MapView 拆成 MapView（协调者+地图渲染）/ UnitView / SelectionController，纯搬代码、行为零变化`n`n### W3.1（待开始）
 - 任务：回合系统（回合数、当前玩家、EndTurn 重置单位移动力、回合显示）
 - 为 W3.2 城市/生产打地基
 
 ### W3.2+（待开始）
 - 城市（移民建城、生产队列、每回合产出）；科技树；战斗与胜负；联机
+
 
 
 

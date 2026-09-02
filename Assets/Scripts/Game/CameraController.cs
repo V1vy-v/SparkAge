@@ -1,50 +1,70 @@
 using SparkAge.Core.Hex;
-using SparkAge.Core.Map;
 using SparkAge.Game;
-using System.Collections;
-using System.Collections.Generic;
-using System.Runtime.ConstrainedExecution;
 using UnityEngine;
 
 public class CameraController : MonoBehaviour
 {
-    //按下右键时抓的世界点
-    Vector3 _grabPoint;
-    //滚轮缩放速度
-    private float scrollSpeed = 2f; 
+    [SerializeField] float pitch = 50f;//俯仰角
+    [SerializeField] float distance = 15f;//相机到关注点的距离
+    [SerializeField] float minDistance = 5f, maxDistance = 30f;//相机到关注点的距离上下限
+    [SerializeField] float moveSpeed = 0.03f;//水平拖拽速度
+    [SerializeField] float scrollSpeed = 2f;//滚轮缩放速度
+
+    //关注点
+    Vector3 target;
     //地图数据
     [SerializeField] private MapView mapView;
-    //地图边界
-    Vector2 topRight, bottomLeft;
+    //地图中心和边界
+    Vector3 center, topRight, bottomLeft;
 
     void Start()
     {
-        (topRight, bottomLeft) = mapView.GetMapBounds();
+        (center, topRight, bottomLeft) = mapView.GetMapCenterAndBounds();
+        InitPosition();
     }
 
-    void Update()
+    void LateUpdate()
     {
-        //中键拖拽
-        if(Input.GetMouseButtonDown(2))
-            _grabPoint = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        else if (Input.GetMouseButton(2))
-            CameraMove();
         //中键滚轮缩放
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (scroll != 0)
-            OrthographicZoom(scroll);
-    }
+            PerspectiveZoom(scroll);
 
+        //中键拖拽
+        if (Input.GetMouseButton(2))
+            CameraMove();
+    }
+    /// <summary>
+    /// 摄像机位置初始化：地图中央
+    /// </summary>
+    private void InitPosition()
+    {
+        target = center;
+        transform.rotation = Quaternion.Euler(pitch, 0, 0);
+        transform.position = target - transform.forward * distance;
+    }
+    /// <summary>
+    /// 摄像机移动
+    /// </summary>
     private void CameraMove()
     {
-        Vector3 delta = Camera.main.ScreenToWorldPoint(Input.mousePosition) - _grabPoint;
-        //范围限制
-        float posX = Mathf.Clamp(transform.position.x - delta.x, bottomLeft.x, topRight.x);
-        float posY = Mathf.Clamp(transform.position.y - delta.y, bottomLeft.y, topRight.y);
-        transform.position = new Vector3(posX, posY, transform.position.z);
+        // 鼠标位移 → 世界平面位移（要乘相机朝向，否则旋转后方向错乱）
+        Vector3 delta = new Vector3(-Input.GetAxis("Mouse X"), 0, -Input.GetAxis("Mouse Y")) * distance * moveSpeed;
+        //限制关注点移动范围
+        float posX = Mathf.Clamp(target.x + delta.x, bottomLeft.x, topRight.x);
+        float posY = Mathf.Clamp(target.z + delta.z, bottomLeft.z, topRight.z);
+        target = new Vector3(posX, target.y, posY);
+        //相机实时对准关注点
+        transform.position = target - transform.forward * distance;
     }
-    private void OrthographicZoom(float scroll)
+    /// <summary>
+    /// 摄像机缩放
+    /// </summary>
+    /// <param name="scroll"></param>
+    private void PerspectiveZoom(float scroll)
     {
-        Camera.main.orthographicSize = Mathf.Clamp(Camera.main.orthographicSize - scroll * scrollSpeed, 5, 15);
+        //摄像机缩放
+        distance = Mathf.Clamp(distance - scroll * scrollSpeed, minDistance, maxDistance);
+        transform.position = target - transform.forward * distance;
     }
 }

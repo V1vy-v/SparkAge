@@ -21,13 +21,11 @@ namespace SparkAge.Game
         //独占字段
         Dictionary<Unit, GameObject> _unitObjs = new Dictionary<Unit, GameObject>();// 单位->游戏对象的映射
         public Dictionary<Unit, GameObject> UnitObjs => _unitObjs;
-        Sprite _unitSprite;//单位精灵
 
         public void Init(GameState state, float hexSize)
         {
             _state = state;
             this.hexSize = hexSize;
-            _unitSprite = HexSpriteFactory.CreateHexSprite(32, Color.white);
         }
 
         /// <summary>
@@ -35,13 +33,14 @@ namespace SparkAge.Game
         /// </summary>
         public GameObject BuildUnit(HexCoord point)
         {
-            GameObject unitObj = new GameObject($"Unit");
-            SpriteRenderer sr = unitObj.AddComponent<SpriteRenderer>();
-            sr.sprite = _unitSprite;
-            sr.color = Color.red;
-            sr.sortingOrder = 11;
+            GameObject unitObj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            unitObj.GetComponent<MeshRenderer>().material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = Color.red
+            };
 
-            unitObj.transform.position = HexLayout.HexToPixel(point, hexSize);
+            unitObj.transform.localScale = Vector3.one * 0.5f;
+            unitObj.transform.position = HexLayout.HexToPixel(point, hexSize, 0.5f);
             return unitObj;
         }
 
@@ -75,7 +74,7 @@ namespace SparkAge.Game
             yield return null;
             foreach (HexCoord hex in path)
             {
-                _unitObjs[unit].transform.position = HexLayout.HexToPixel(hex, hexSize);
+                _unitObjs[unit].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.5f);
                 yield return moveDeltaTime;
             }
             callback1?.Invoke(unit);
