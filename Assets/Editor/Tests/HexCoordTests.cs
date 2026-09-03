@@ -1,5 +1,6 @@
 using NUnit.Framework;
-using SparkAge.Core.Hex;
+using SparkAge.Framework.Hex;
+using SparkAge.Model.Hex;
 
 public class HexCoordTests
 {

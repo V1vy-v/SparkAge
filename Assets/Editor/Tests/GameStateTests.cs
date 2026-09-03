@@ -1,11 +1,12 @@
 using NUnit.Framework;
-using SparkAge.Core;
-using SparkAge.Core.Hex;
-using SparkAge.Core.Map;
+using SparkAge.Model;
+using SparkAge.Model.Hex;
+using SparkAge.Model.Map;
+using SparkAge.Model.Units;
 
 public class GameStateTests
 {
-    static SparkAge.Core.Units.Unit UnitAt(HexCoord pos, int movement) => new(pos, 0, movement, movement);
+    static SparkAge.Model.Units.Unit UnitAt(HexCoord pos, int movement) => new(UnitType.warrior, pos, 0, movement, movement);
 
     static GameState MakeMap(params (HexCoord c, TerrainType t)[] tiles)
     {

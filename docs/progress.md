@@ -9,7 +9,7 @@
 3. 执行对话每完成一个任务，更新 docs/progress.md（做了什么、结果、阻塞点）。
 4. 两个对话看到对方更新的文件时，以文件内容为最新事实。
 
-## 当前状态：W3.0b-1 完成 → W3.0b-2 进行中（3D 化主体）
+## 当前状态：W3.1 完成 → W3.2 待开始（城市 + 生产）
 
 ## 里程碑
 ### W1（完成）
@@ -34,12 +34,25 @@
 
 ### W3.0（完成）
 ### W3.0b-1（完成）
-- 切换到 3D URP 管线（URP3D + Universal Renderer）、Directional Light、2D 灯光清理`n- 任务：把 MapView 拆成 MapView（协调者+地图渲染）/ UnitView / SelectionController，纯搬代码、行为零变化`n`n### W3.1（待开始）
+### W3.0b-2（完成）
+- 3D 化主体：HexMeshFactory、地形/单位/高亮 3D、透视相机、射线拾取、Sprites/Default 修复透明
+- 延后到 W6：单位选中框环网格（ring mesh）
+- 切换到 3D URP 管线（URP3D + Universal Renderer）、Directional Light、2D 灯光清理
+- 任务：把 MapView 拆成 MapView（协调者+地图渲染）/ UnitView / SelectionController，纯搬代码、行为零变化
+
+### W3.1（完成）
+- EndTurn（Core）+ 空格触发 + 刷新选中
+- UI 统一延后：用户熟悉 UGUI，回合数/面板等 UI 批量后做
 - 任务：回合系统（回合数、当前玩家、EndTurn 重置单位移动力、回合显示）
 - 为 W3.2 城市/生产打地基
 
 ### W3.2+（待开始）
 - 城市（移民建城、生产队列、每回合产出）；科技树；战斗与胜负；联机
+
+
+
+
+
 
 
 

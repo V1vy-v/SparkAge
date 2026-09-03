@@ -99,4 +99,18 @@
 - 根因：三角形绕序反了。HexMeshFactory 的 triangles = {0,2,1, 0,3,2, 0,4,3, 0,5,4}，叉积算出几何法线朝 -Y（朝下），而相机在 +Y 上方 → 看到的是背面，被背面剔除 → 不渲染。
 - 修复：每三个索引反转 → {0,1,2, 0,2,3, 0,3,4, 0,4,5}。
 - 验证：Scene 里开 Cull Off 或显示法线；修复后地块朝上即可见。
-- 顺带：MapView 有多余的 `using System.Drawing;`（会和 UnityEngine.Color 冲突/编译风险），删掉。
+- 顺带：MapView 有多余的 `using System.Drawing;`（会和 UnityEngine.Color 冲突/编译风险），删掉。18. **架构方向定为"命令驱动的分层"（2026-09）**：详见 docs/architecture.md。要点：Core 唯一事实源；玩家操作=可序列化命令（单机本地执行=联机发主机执行，同一路径）；Core 系统产事件、表现层消费；EndTurn 是有序流水线；UI 状态（选中/相机）不进 Core；迁移增量进行，W3.2 起新功能直接按新模式落位。
+
+## 问答记录：FoundCity 用途说明 + 文档损坏提醒（2026-09-03）
+- FoundCity/FoundCityOrder（W3.2）：移民建城动作——校验目标格（无城市/无单位/可建城/城市数<上限），Core 执行 Cities.Add + 消耗移民，表现层生成城市视觉。
+- 勘误（2026-09-03）：全量扫描后确认所有文档/代码均为合法 UTF-8（严格解码零失败），并无中文损坏；此前看到的乱码/孤立 "n" 是读取端未按 UTF-8 解码（终端 GBK）的显示假象。真实缺陷仅是 progress.md 里出现字面 "`n" 把多行挤在一起，已修复。
+## 协作约定补充：统一 UTF-8（2026-09-03）
+1. 所有文档/代码统一 UTF-8（.md 保留 BOM；.cs 无 BOM 的 UTF-8 亦可，勿写 GBK）。
+2. 文档内禁止出现字面 "`n"——换行必须用真实换行符；写完自检 `字面反引号+n` 数量为 0。
+3. 读写一律显式 UTF-8：PowerShell 5.1 默认按 GBK 解码，需用 `Get-Content -Encoding UTF8` 或 .NET `[IO.File]::ReadAllText/WriteAllText(..., UTF8Encoding)`，追加写入也要显式 UTF8Encoding。
+## 问答记录：城市范围 List<HexCoord> 不需要存进 City（2026-09-03）
+- 依据：gamedesign.md 明确"领地=距中心≤2，派生不存储"；城市不移动、半径固定 → 存储是冗余 + 脏数据风险 + 序列化负担；产出为统一固定值，无需遍历领地。
+- 做法：City 只存 Position/Owner（+将来生产状态），提供 GetTerritory(MapData) 派生方法；半径常量放 GameRules.CityRadius。
+- 例外：将来做扩建/买地/中心可变时才升级为存储列表，demo 不加。19. **表现层落地形态定为 MVC 风格 + EventBus（2026-09）**：Core=Model（纯 C#，不感知事件）；GameController=唯一 Controller（装配/输入/调 Core/编排）；MapView/UnitView/CityView/SelectionView=View（纯显示）；EventBus=表现层事件中心（静态服务，允许全局）。异步完成/跨组件反应走事件，单一接收方走方法调用；Core 不发布不订阅事件。
+20. **网络定案（2026-09，Mirror）**：选 Mirror 作传输层（NetworkMessage 收发）；主机权威 + 整状态广播；游戏状态保持在纯 C# Model，不做成 Mirror 同步对象/变量；演示走本机/LAN；W4 AI 先建命令接缝（SubmitOrder），W5 网络复用。
+

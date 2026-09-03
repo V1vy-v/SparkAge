@@ -1,5 +1,4 @@
-using NUnit.Framework;
-using SparkAge.Core.Hex;
+using SparkAge.Model.Hex;
 using System.Collections.Generic;
 
 public class FindPathTests
