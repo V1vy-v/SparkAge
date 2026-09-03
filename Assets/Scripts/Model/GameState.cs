@@ -4,7 +4,6 @@ using SparkAge.Model.Map;
 using SparkAge.Model.Players;
 using SparkAge.Model.Units;
 using System.Collections.Generic;
-using System.Drawing;
 
 namespace SparkAge.Model
 {

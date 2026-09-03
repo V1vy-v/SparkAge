@@ -9,7 +9,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using static SparkAge.Framework.EventCenter.EventDefine;
-using static SparkAge.Model.GameState;
 
 namespace SparkAge.View
 {
@@ -69,6 +68,7 @@ namespace SparkAge.View
                     break;
             }
 
+            unitObjs[unit] = unitObj;
             unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
             return unitObj;
         }
@@ -87,9 +87,9 @@ namespace SparkAge.View
         /// </summary>
         /// <param name="unit"></param>
         /// <param name="tarHex"></param>
-        public void MoveUnit(Unit unit, List<HexCoord> path, UnityAction<Unit> callback1, UnityAction<bool> callback2)
+        public void MoveUnit(Unit unit, List<HexCoord> path)
         {
-            StartCoroutine(MoveSequence(unit, path, callback1, callback2));
+            StartCoroutine(MoveSequence(unit, path));
         }
 
         private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
@@ -99,7 +99,7 @@ namespace SparkAge.View
         /// <param name="obj"></param>
         /// <param name="path"></param>
         /// <returns></returns>
-        IEnumerator MoveSequence(Unit unit, List<HexCoord> path, UnityAction<Unit> callback1, UnityAction<bool> callback2)
+        IEnumerator MoveSequence(Unit unit, List<HexCoord> path)
         {
             yield return null;
             foreach (HexCoord hex in path)
@@ -107,8 +107,8 @@ namespace SparkAge.View
                 unitObjs[unit].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.5f);
                 yield return moveDeltaTime;
             }
-            callback1?.Invoke(unit);
-            callback2?.Invoke(false);
+            //发布单位移动事件
+            EventCenter.Instance.EventTrigger<UnitMoveEvent>(new UnitMoveEvent(unit, path, false));
         }
     }
 }

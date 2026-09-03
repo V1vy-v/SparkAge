@@ -49,6 +49,12 @@ namespace SparkAge.Controller
         }
         private void Start()
         {
+            //订阅单位移动事件
+            EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
+            {
+                isMoving = e.isMoving;
+            });
+
             mapView.BuildTiles();
 
             (Vector3, Vector3, Vector3) keyPos = mapView.GetMapCenterAndBounds();
@@ -59,7 +65,7 @@ namespace SparkAge.Controller
             HexCoord? spawnPoint = state.FindSpawnPoint(state.Map.Center);
             if (spawnPoint != null)
             {
-                Unit unit = new Unit(UnitType.warrior, (HexCoord)spawnPoint, 0, 3, 3);
+                Unit unit = new Unit(UnitType.warrior, (HexCoord)spawnPoint, 1, 3, 3);
                 GameObject obj = unitView.BuildUnit(unit);
                 state.Units.Add(unit);
                 unitView.UnitObjs[unit] = obj;
@@ -70,7 +76,7 @@ namespace SparkAge.Controller
             spawnPoint = state.FindSpawnPoint(new HexCoord(0, 0));
             if (spawnPoint != null)
             {
-                Unit unit = new Unit(UnitType.Settler, (HexCoord)spawnPoint, 0, 4, 4);
+                Unit unit = new Unit(UnitType.Settler, (HexCoord)spawnPoint, 1, 4, 4);
                 GameObject obj = unitView.BuildUnit(unit);
                 state.Units.Add(unit);
                 unitView.UnitObjs[unit] = obj;
@@ -103,7 +109,7 @@ namespace SparkAge.Controller
             {
                 HexCoord? hex = GetClickHex();
                 if (hex != null)
-                    MoveUnit(selectionView.SelectedUnit, (HexCoord)hex, selectionView.SelectUnit, (isMoving) => this.isMoving = isMoving);
+                    TryMoveUnit(selectionView.SelectedUnit, (HexCoord)hex);
             }
         }
 
@@ -134,7 +140,7 @@ namespace SparkAge.Controller
         /// <param name="tarHex"></param>
         /// <param name="callback1"></param>
         /// <param name="callback2"></param>
-        public void MoveUnit(Unit unit, HexCoord tarHex, UnityAction<Unit> callback1, UnityAction<bool> callback2)
+        public void TryMoveUnit(Unit unit, HexCoord tarHex)
         {
             MoveResult result = state.MoveUnit(unit, tarHex);
             if (!result.Success)
@@ -144,7 +150,8 @@ namespace SparkAge.Controller
             }
 
             isMoving = true;
-            unitView.MoveUnit(unit, result.Path, callback1, callback2);
+            //发布单位移动事件
+            unitView.MoveUnit(unit, result.Path);
         }
 
         public void TryFoundCity(Unit unit)
@@ -166,11 +173,13 @@ namespace SparkAge.Controller
                     case FoundCityFailReason.OccupiedByCity:
                         Debug.Log("该地块已被城市占据");
                         break;
+                    case FoundCityFailReason.Limited:
+                        Debug.Log("你的城市数量已达上限");
+                        break;
                 }
                 return;
             }
             //发布建城事件
-            EventCenter.Instance.EventTrigger("FoundCity");
             EventCenter.Instance.EventTrigger<FoundCityEvent>(new FoundCityEvent(result.City, unit));
         }
     }

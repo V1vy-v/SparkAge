@@ -1,7 +1,10 @@
 using SparkAge.Framework.EventCenter;
+using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
+using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
 
@@ -14,12 +17,17 @@ namespace SparkAge.View
         float hexSize;
 
         //独占字段
-        
+        Mesh cityMesh;
+        Dictionary <City, GameObject> cityObjs = new Dictionary<City, GameObject>();// 单位->游戏对象的映射
+        public Dictionary<City, GameObject> CityObjs => cityObjs;
+
 
         public void Init(GameState state, float hexSize)
         {
             this.state = state;
             this.hexSize = hexSize;
+
+            cityMesh = HexMeshFactory.CreateHexMesh(0.7f * hexSize);
         }
 
         private void Start()
@@ -34,9 +42,20 @@ namespace SparkAge.View
         /// <summary>
         /// 创建城市边界：待定
         /// </summary>
-        public void BuildCity(City city)
+        public GameObject BuildCity(City city)
         {
-            Debug.Log("已创建城市");
+            GameObject obj = new GameObject();
+            MeshFilter mf = obj.AddComponent<MeshFilter>();
+            mf.mesh = cityMesh;
+            MeshRenderer mr = obj.AddComponent<MeshRenderer>();
+            mr.material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = Color.gray
+            };
+
+            cityObjs[city] = obj;
+            obj.transform.position = HexLayout.HexToPixel(city.Position, hexSize, 0.3f);
+            return obj;
         }
     }
 }

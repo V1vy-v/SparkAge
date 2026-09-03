@@ -5,6 +5,7 @@ using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections.Generic;
 using UnityEngine;
+using static SparkAge.Framework.EventCenter.EventDefine;
 
 namespace SparkAge.View
 {
@@ -50,8 +51,15 @@ namespace SparkAge.View
         private void Start()
         {
             //订阅事件
-            EventCenter.Instance.AddListener("FoundCity", ClearHighlight);
-            EventCenter.Instance.AddListener("FoundCity", ClearSelection);
+            EventCenter.Instance.AddListener<FoundCityEvent>(e =>
+            {
+                ClearSelection();
+            });
+            EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
+            {
+                SelectUnit(e.unit);
+                ShowHighlight(e.unit.Position);
+            });
         }
 
         /// <summary>
@@ -182,7 +190,7 @@ namespace SparkAge.View
         /// 刷新可到达范围：先隐藏再显示
         /// </summary>
         /// <param name="reachableHex"></param>
-        public void ShowRange(List<HexCoord> reachableHex)
+        private void ShowRange(List<HexCoord> reachableHex)
         {
             //隐藏所有范围对象
             foreach (var obj in reachableObjs)
