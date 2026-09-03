@@ -1,22 +1,19 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+using SparkAge.Model.Cities;
+using SparkAge.Model.Units;
 
 namespace SparkAge.Framework.EventCenter
 {
-
     public class EventDefine
     {
-        // Start is called before the first frame update
-        void Start()
+        public class FoundCityEvent
         {
-
-        }
-
-        // Update is called once per frame
-        void Update()
-        {
-
+            public City City;
+            public Unit ConsumedSettler;
+            public FoundCityEvent(City city,Unit settler)
+            {
+                City = city;
+                ConsumedSettler = settler;
+            }
         }
     }
 }

@@ -114,3 +114,28 @@
 - 例外：将来做扩建/买地/中心可变时才升级为存储列表，demo 不加。19. **表现层落地形态定为 MVC 风格 + EventBus（2026-09）**：Core=Model（纯 C#，不感知事件）；GameController=唯一 Controller（装配/输入/调 Core/编排）；MapView/UnitView/CityView/SelectionView=View（纯显示）；EventBus=表现层事件中心（静态服务，允许全局）。异步完成/跨组件反应走事件，单一接收方走方法调用；Core 不发布不订阅事件。
 20. **网络定案（2026-09，Mirror）**：选 Mirror 作传输层（NetworkMessage 收发）；主机权威 + 整状态广播；游戏状态保持在纯 C# Model，不做成 Mirror 同步对象/变量；演示走本机/LAN；W4 AI 先建命令接缝（SubmitOrder），W5 网络复用。
 
+21. **EventCenter 用单例（2026-09）**：轻量单例（`Instance` 静态属性 + 实例方法 + `Clear()`），不用场景 MonoBehaviour。理由：EventCenter 是"服务"（允许全局），且不需要 Unity 生命周期；`Clear()` 用于开新局/测试。Framework/Singleton 同时提供 `MonoSingleton<T>` 基类供以后需要场景生命周期的服务（如 AudioManager）使用。调用改为 `EventCenter.Instance.Subscribe/Publish`。
+
+## 问答记录：seed 和 hexSize 的归属（2026-09-04，MVC 装配期）
+- 结论：两者都作为 GameController 的 [SerializeField]（场景唯一配置点）。
+  - seed：只用于生成地图（Model 创建参数），生成完即完成使命，不进 View。
+  - hexSize：所有要摆位置的 View（Map/Unit/Selection/City/Camera）都用 → Controller 统一持有并在 Init 时注入，View 不再各自 SerializeField。
+- 目标分工：GameController=装配+输入+调 Core+编排；MapView 只剩渲染（BuildTiles/材质/mesh）；state/输入/EndTurn/出生摆放等从 MapView 迁到 GameController。
+- 现状：重构未完成——MapView 仍带 Controller 逻辑（state/Update/出生），GameController 骨架未接完（mapView 未赋值、缺 seed/hexSize/hexMesh 字段），另有 SelectionController.cs/HexPicker.cs 疑似旧文件待清理。
+## 问答记录：静态 HexPicker 如何拿 state/hexSize（2026-09-04）
+- 推荐：静态方法改为带参 `GetClickHex(GameState state, float hexSize)`，调用方（持有实例状态）传入；或职责再切细——HexPicker 只做"屏幕点→地面世界点"纯几何，PixelToHex/IsInMap 留在调用方。
+- 不推荐在静态类里存静态全局 state/hexSize（隐藏全局可变依赖）。
+- 现状：HexPicker.GetClickHex 引用了不存在的 state/hexSize，编译不过，需按上面修。
+## 问答记录：事件中心会不会跨过控制层（2026-09-04）
+- 结论：按本方案，"GameState 发布表现层事件"是不正常的——违背"Core 不发布不订阅事件"；View 订阅自动反应本身正常，但发布权归 Controller。
+- 正确链：输入→Order→Core.Execute 改状态并返回事件数据（纯数据）→ GameController 决定表现反应（转 EventCenter.Publish 或直接调 View 方法）→ View 播动画。
+- 事件中心用于多订阅者/解耦；单一接收方走方法调用。View 不得直接订阅 Model 状态变化自行动画（Controller 失编排、联机同路径被破坏）。
+## 问答记录：FoundCity 走 GameController 驱动表现（2026-09-04）
+- Execute(order)：架构目标里的统一命令入口（GameState.Execute(Order) 校验+分发+返回事件数据）；现状尚未实现，FoundCity/MoveUnit 仍是直调方法，可增量迁移。
+- FoundCity 数据层缺口：1) 未 Units.Remove(settler)；2) 未 CityNum++；3) bug：GetUnitAt(settler.Position) 会返回移民自己 → 永远 OccupiedByUnit，应改为"同格存在非本单位的其他单位"才算被占。
+- 控制层编排：GameController.TryFoundCity(settler)：result=state.FoundCity → 成功则 cityView.Spawn(city) + unitView.PlayDestroy(settler)（销毁动画后删 GameObject）+ selectionView.ClearSelection()。
+- 演示触发：选中移民按 F（将来换 UI 按钮/FoundCityOrder）。
+## 问答记录：EventCenter 委托类型冲突（2026-09-04）
+- 报错根因：paramEvents 用字符串 eventName 作键，同一名字下挂了不同类型委托（"FoundCity" 同时被 UnityAction<Unit> 和 UnityAction<City> 注册），AddListener 里 Delegate.Remove(existing, action) 类型不同 → ArgumentException。
+- 修复：键改成载荷类型 typeof(T)（推荐，事件=数据对象，去掉字符串名）；或保留名字用复合键 (eventName, typeof(T))。
+- 另发现 bug：EventTrigger<T> 查的是 noParamEvents（错字典），带参事件实际永远触发不了。

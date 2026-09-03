@@ -4,6 +4,7 @@ using SparkAge.Model.Map;
 using SparkAge.Model.Players;
 using SparkAge.Model.Units;
 using System.Collections.Generic;
+using System.Drawing;
 
 namespace SparkAge.Model
 {
@@ -22,7 +23,11 @@ namespace SparkAge.Model
         public GameState(MapData map)
         {
             Map = map;
+            Players = new List<PlayerState>() { new PlayerState(1) };
             Units = new List<Unit>();
+            Cities = new List<City>();
+            TurnNumber = 1;
+            CurrentPlayer = 1;
         }
         /// <summary>
         /// 根据id获取玩家数据方法
@@ -66,68 +71,6 @@ namespace SparkAge.Model
             return null;
         }
 
-        public enum FoundCityFailReason { Success, NotSettler, Unbuildable, OccupiedByUnit, OccupiedByCity, Limited }
-        public readonly struct FoundCityResult
-        {
-            public readonly bool Success;
-            public readonly FoundCityFailReason Reason;
-            public readonly City City;
-            public FoundCityResult(bool success, FoundCityFailReason reason, City city)
-            {
-                Success = success;
-                Reason = reason;
-                City = city;
-            }
-        }
-        public FoundCityResult FoundCity(Unit settler)
-        {
-            if (settler.type != UnitType.Settler)
-                return new FoundCityResult(false, FoundCityFailReason.NotSettler, null);
-            if (!Map.Tiles[settler.Position].Walkable)
-                return new FoundCityResult(false, FoundCityFailReason.Unbuildable, null);
-            if (GetUnitAt(settler.Position) != null)
-                return new FoundCityResult(false, FoundCityFailReason.OccupiedByUnit, null);
-            if (GetCityAt(settler.Position) != null)
-                return new FoundCityResult(false, FoundCityFailReason.OccupiedByCity, null);
-            if (GetPlayerState(CurrentPlayer).CityNum >= GameRules.MaxCitiesPerPlayer)
-                return new FoundCityResult(false, FoundCityFailReason.Limited, null);
-            //单位注销销毁
-
-            //新建城市
-            City city = new City(settler.Position, 2, CurrentPlayer);
-            Cities.Add(city);
-
-            return new FoundCityResult(true, FoundCityFailReason.Success, city);
-        }
-
-        /// <summary>
-        /// BFS算法搜索第一个可以作为出生点的地块
-        /// </summary>
-        /// <param name="center"></param>
-        /// <returns></returns>
-        public HexCoord? FindSpawnPoint(HexCoord center)
-        {
-            Queue<HexCoord> queue = new();
-            List<HexCoord> visited = new List<HexCoord> { center };
-            queue.Enqueue(center);
-            while (queue.Count > 0)
-            {
-                HexCoord curHex = queue.Dequeue();
-                if (Map.Tiles[curHex].Walkable)
-                    return curHex;
-
-                for (int i = 0; i < 6; i++)
-                {
-                    HexCoord newHex = curHex.Neighbor(i);
-                    if (Map.IsInMap(newHex) && !visited.Contains(newHex))
-                    {
-                        queue.Enqueue(newHex);
-                        visited.Add(newHex);
-                    }
-                }
-            }
-            return null;
-        }
         /// <summary>
         /// 根据单位位置和移动力使用扩散算法计算可到达点
         /// </summary>
@@ -183,7 +126,7 @@ namespace SparkAge.Model
         public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
         {
 
-            if (!GetReachableTiles(unit).Contains(tarHex)) 
+            if (!GetReachableTiles(unit).Contains(tarHex))
                 return new MoveResult(false, MoveFailReason.Unreachable, null);
             if (GetUnitAt(tarHex) != null)
                 return new MoveResult(false, MoveFailReason.TileOccupied, null);
@@ -198,6 +141,82 @@ namespace SparkAge.Model
             unit.Position = tarHex;
             return new MoveResult(true, MoveFailReason.Success, pathRes.Path);
         }
+
+        public enum FoundCityFailReason { Success, NotSettler, Unbuildable, OccupiedByUnit, OccupiedByCity, Limited }
+        public readonly struct FoundCityResult
+        {
+            public readonly bool Success;
+            public readonly FoundCityFailReason Reason;
+            public readonly City City;
+            public FoundCityResult(bool success, FoundCityFailReason reason, City city)
+            {
+                Success = success;
+                Reason = reason;
+                City = city;
+            }
+        }
+        public FoundCityResult FoundCity(Unit settler)
+        {
+            if (settler.type != UnitType.Settler)
+                return new FoundCityResult(false, FoundCityFailReason.NotSettler, null);
+
+            if (!Map.Tiles[settler.Position].Walkable)
+                return new FoundCityResult(false, FoundCityFailReason.Unbuildable, null);
+
+            foreach (var u in Units)
+                if (u != settler && u.Position.Equals(settler.Position))
+                    return new FoundCityResult(false, FoundCityFailReason.OccupiedByUnit, null);
+
+            if (GetCityAt(settler.Position) != null)
+                return new FoundCityResult(false, FoundCityFailReason.OccupiedByCity, null);
+
+            var ps = GetPlayerState(CurrentPlayer);
+            if (ps.CityNum >= GameRules.MaxCitiesPerPlayer)
+                return new FoundCityResult(false, FoundCityFailReason.Limited, null);
+
+            //单位注销
+            Units.Remove(settler);
+
+            //新建城市
+            City city = new City(settler.Position, GameRules.InitialCityRadius, CurrentPlayer);
+            Cities.Add(city);
+            ps.CityNum++;
+
+            return new FoundCityResult(true, FoundCityFailReason.Success, city);
+        }
+
+        /// <summary>
+        /// BFS算法搜索第一个可以作为出生点的地块
+        /// </summary>
+        /// <param name="center"></param>
+        /// <returns></returns>
+        public HexCoord? FindSpawnPoint(HexCoord center)
+        {
+            Queue<HexCoord> queue = new();
+            List<HexCoord> visited = new List<HexCoord> { center };
+            queue.Enqueue(center);
+            while (queue.Count > 0)
+            {
+                HexCoord curHex = queue.Dequeue();
+                if (Map.Tiles[curHex].Walkable)
+                    return curHex;
+
+                for (int i = 0; i < 6; i++)
+                {
+                    HexCoord newHex = curHex.Neighbor(i);
+                    if (Map.IsInMap(newHex) && !visited.Contains(newHex))
+                    {
+                        queue.Enqueue(newHex);
+                        visited.Add(newHex);
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 回合结束
+        /// </summary>
         public void EndTurn()
         {
             TurnNumber++;

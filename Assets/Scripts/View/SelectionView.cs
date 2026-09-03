@@ -1,3 +1,4 @@
+using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Hex;
@@ -17,33 +18,40 @@ namespace SparkAge.View
         [SerializeField] Color reachableColor = new Color(0f, 0f, 0.6f, 0.7f);       // 深蓝色（半透明）
 
         //外部提供字段
-        GameState _state;
+        GameState state;
         float hexSize;
-        Mesh _hexMesh;//地块网格
+        Mesh hexMesh;//地块网格
 
         //独占字段
-        Mesh _unitHighlightMesh;//单位选中框网格
-        Mesh _reachableMesh;//单位可到达地块网格
-        MeshRenderer _highlight;//地块高亮渲染器
-        MeshRenderer _unitHighlight;//单位选中框渲染器
+        Mesh unitHighlightMesh;//单位选中框网格
+        Mesh reachableMesh;//单位可到达地块网格
+        MeshRenderer highlight;//地块高亮渲染器
+        MeshRenderer unitHighlight;//单位选中框渲染器
 
-        Unit _selectedUnit;//当前选中的单位
-        public Unit SelectedUnit => _selectedUnit;//当前选中的单位：外部访问接口
+        Unit selectedUnit;//当前选中的单位
+        public Unit SelectedUnit => selectedUnit;//当前选中的单位：外部访问接口
         List<HexCoord> reachableHex = new();//当前单位可移动范围
         List<GameObject> reachableObjs = new List<GameObject>(128);//可移动范围对象
 
 
         public void Init(GameState state, float hexSize, Mesh hexMesh)
         {
-            _state = state;
+            this.state = state;
             this.hexSize = hexSize;
-            _hexMesh = hexMesh;
+            this.hexMesh = hexMesh;
 
-            _unitHighlightMesh = HexMeshFactory.CreateHexMesh(0.8f * hexSize);
-            _reachableMesh = HexMeshFactory.CreateHexMesh(0.9f * hexSize);
+            unitHighlightMesh = HexMeshFactory.CreateHexMesh(0.8f * hexSize);
+            reachableMesh = HexMeshFactory.CreateHexMesh(0.9f * hexSize);
 
             BuildHighlight();
             BuildReachableObj();
+        }
+
+        private void Start()
+        {
+            //订阅事件
+            EventCenter.Instance.AddListener("FoundCity", ClearHighlight);
+            EventCenter.Instance.AddListener("FoundCity", ClearSelection);
         }
 
         /// <summary>
@@ -54,9 +62,9 @@ namespace SparkAge.View
             //地块高亮
             GameObject obj = new GameObject("highlight");
             MeshFilter mf = obj.AddComponent<MeshFilter>();
-            mf.mesh = _hexMesh;
-            _highlight = obj.AddComponent<MeshRenderer>();
-            _highlight.material = new Material(Shader.Find("Sprites/Default"))
+            mf.mesh = hexMesh;
+            highlight = obj.AddComponent<MeshRenderer>();
+            highlight.material = new Material(Shader.Find("Sprites/Default"))
             {
                 color = highlightColor
             };
@@ -65,9 +73,9 @@ namespace SparkAge.View
             //单位选中框
             obj = new GameObject("unitHighlight");
             mf = obj.AddComponent<MeshFilter>();
-            mf.mesh = _unitHighlightMesh;
-            _unitHighlight = obj.AddComponent<MeshRenderer>();
-            _unitHighlight.material = new Material(Shader.Find("Sprites/Default"))
+            mf.mesh = unitHighlightMesh;
+            unitHighlight = obj.AddComponent<MeshRenderer>();
+            unitHighlight.material = new Material(Shader.Find("Sprites/Default"))
             {
                 color = unitHighlightColor
             };
@@ -90,7 +98,7 @@ namespace SparkAge.View
             {
                 reachableObj = new GameObject("reachableTile");
                 mf = reachableObj.AddComponent<MeshFilter>();
-                mf.mesh = _reachableMesh;
+                mf.mesh = reachableMesh;
                 mr = reachableObj.AddComponent<MeshRenderer>();
                 mr.material = material;
                 reachableObj.SetActive(false);
@@ -100,33 +108,10 @@ namespace SparkAge.View
         }
 
         /// <summary>
-        /// 获取点击处地块Hex
+        /// 接收点击地块，关联点击高亮、单位选中、移动范围显示
         /// </summary>
-        /// <returns></returns>
-        public HexCoord? GetClickHex()
+        public void HandleClick(HexCoord? clickHex)
         {
-            //能被射线检测即在地图内
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            Plane ground = new Plane(Vector3.up, Vector3.zero);
-            if (ground.Raycast(ray, out float dist))
-            {
-                HexCoord clickHex = HexLayout.PixelToHex(ray.GetPoint(dist), hexSize);
-
-                if (_state.Map.IsInMap(clickHex))
-                    return clickHex;
-            }
-                
-            //不在地图内，无高亮
-            return null;
-        }
-
-        /// <summary>
-        /// 鼠标左键点击总入口，关联点击高亮、单位选中、移动范围显示
-        /// </summary>
-        public void HandleClick()
-        {
-            //获取点击地块
-            HexCoord? clickHex = GetClickHex();
             //在地图外
             if (clickHex == null)
             {
@@ -138,13 +123,13 @@ namespace SparkAge.View
             //显示地块高亮
             ShowHighlight(clickHex);
             //是否选中单位
-            _selectedUnit = _state.GetUnitAt((HexCoord)clickHex);
-            if (_selectedUnit != null)
-                SelectUnit(_selectedUnit);
+            selectedUnit = state.GetUnitAt((HexCoord)clickHex);
+            if (selectedUnit != null)
+                SelectUnit(selectedUnit);
             else
             {
                 //断开引用
-                _selectedUnit = null;
+                selectedUnit = null;
                 ClearSelection();
             }
         }
@@ -153,15 +138,15 @@ namespace SparkAge.View
         /// </summary>
         public void ShowHighlight(HexCoord? clickHex)
         {
-            _highlight.transform.position = HexLayout.HexToPixel((HexCoord)clickHex, hexSize, 0.02f);
-            _highlight.gameObject.SetActive(true);
+            highlight.transform.position = HexLayout.HexToPixel((HexCoord)clickHex, hexSize, 0.02f);
+            highlight.gameObject.SetActive(true);
         }
         /// <summary>
         /// 隐藏地块高亮
         /// </summary>
         private void ClearHighlight()
         {
-            _highlight.gameObject.SetActive(false);
+            highlight.gameObject.SetActive(false);
         }
         /// <summary>
         /// 实现点击选中单位和显示可移动范围
@@ -169,11 +154,11 @@ namespace SparkAge.View
         public void SelectUnit(Unit unit)
         {
             //高亮选中框
-            _unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
-            _unitHighlight.gameObject.SetActive(true);
+            unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
+            unitHighlight.gameObject.SetActive(true);
 
             //计算可移动范围
-            reachableHex = _state.GetReachableTiles(unit);
+            reachableHex = state.GetReachableTiles(unit);
 
             //显示移动范围
             ShowRange(reachableHex);
@@ -186,12 +171,12 @@ namespace SparkAge.View
         public void ClearSelection()
         {
             //隐藏选中框
-            _unitHighlight.gameObject.SetActive(false);
+            unitHighlight.gameObject.SetActive(false);
             //隐藏所有范围对象
             for (int i = 0; i < reachableObjs.Count; i++)
                 reachableObjs[i].gameObject.SetActive(false);
             //清除选中对象
-            _selectedUnit = null;
+            selectedUnit = null;
         }
         /// <summary>
         /// 刷新可到达范围：先隐藏再显示

@@ -12,16 +12,8 @@ namespace SparkAge.View
 
         //关注点
         Vector3 target;
-        //地图数据
-        [SerializeField] private MapView mapView;
         //地图中心和边界
         Vector3 center, topRight, bottomLeft;
-
-        void Start()
-        {
-            (center, topRight, bottomLeft) = mapView.GetMapCenterAndBounds();
-            InitPosition();
-        }
 
         void LateUpdate()
         {
@@ -37,8 +29,12 @@ namespace SparkAge.View
         /// <summary>
         /// 摄像机位置初始化：地图中央
         /// </summary>
-        private void InitPosition()
+        public void Init(Vector3 center, Vector3 topRight, Vector3 bottomLeft)
         {
+            this.center = center;
+            this.topRight = topRight;
+            this.bottomLeft = bottomLeft;
+
             target = center;
             transform.rotation = Quaternion.Euler(pitch, 0, 0);
             transform.position = target - transform.forward * distance;
