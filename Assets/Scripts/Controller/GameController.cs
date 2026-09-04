@@ -55,28 +55,18 @@ namespace SparkAge.Controller
                 isMoving = e.isMoving;
             });
 
+            //构建地图
             mapView.BuildTiles();
 
+            //初始化摄像机脚本
             (Vector3, Vector3, Vector3) keyPos = mapView.GetMapCenterAndBounds();
             CameraController.Init(keyPos.Item1, keyPos.Item2, keyPos.Item3);
 
-            //布置一个勇士和一个移民
-            //创建单位
+            //初始拥有一个移民
             HexCoord? spawnPoint = state.FindSpawnPoint(state.Map.Center);
             if (spawnPoint != null)
             {
-                Unit unit = new Unit(UnitType.warrior, (HexCoord)spawnPoint, 1, 3, 3);
-                GameObject obj = unitView.BuildUnit(unit);
-                state.Units.Add(unit);
-                unitView.UnitObjs[unit] = obj;
-            }
-            else
-                print("创建单位出生点失败！！！");
-
-            spawnPoint = state.FindSpawnPoint(new HexCoord(0, 0));
-            if (spawnPoint != null)
-            {
-                Unit unit = new Unit(UnitType.Settler, (HexCoord)spawnPoint, 1, 4, 4);
+                Unit unit = new Unit(UnitType.Settler, (HexCoord)spawnPoint, 1);
                 GameObject obj = unitView.BuildUnit(unit);
                 state.Units.Add(unit);
                 unitView.UnitObjs[unit] = obj;
@@ -92,6 +82,19 @@ namespace SparkAge.Controller
             if(Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.type == UnitType.Settler)
             {
                 TryFoundCity(selectionView.SelectedUnit);
+            }
+
+            if(selectionView.SelectedCity != null)
+            {
+                //后期改为UI交互
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                {
+                    TryBuildUnit(selectionView.SelectedCity, UnitType.Settler);
+                }
+                else if (Input.GetKeyDown(KeyCode.Alpha2))
+                {
+                    TryBuildUnit(selectionView.SelectedCity, UnitType.Warrior);
+                }
             }
 
             if (Input.GetKeyDown(KeyCode.Space))
@@ -181,6 +184,30 @@ namespace SparkAge.Controller
             }
             //发布建城事件
             EventCenter.Instance.EventTrigger<FoundCityEvent>(new FoundCityEvent(result.City, unit));
+        }
+
+        public void TryBuildUnit(City city, UnitType type)
+        {
+            //数据层
+            BuildUnitResult result =  state.BuildUnit(city, type);
+            if (!result.Success)
+            {
+                switch (result.Reason)
+                {
+                    case BuildUnitFailReason.NotEnoughProduction:
+                        Debug.Log("生产力不足");
+                        break;
+                    case BuildUnitFailReason.NoUnitSpawnNear:
+                        Debug.Log("无可用单位出生点");
+                        break;
+                }
+                return;
+            }
+
+            //表现层
+            //发布造兵事件
+            EventCenter.Instance.EventTrigger<BuildUnitEvent>(new BuildUnitEvent(city, result.Unit));
+
         }
     }
 }

@@ -7,7 +7,7 @@ namespace SparkAge.Model.Units
     /// </summary>
     public enum UnitType
     {
-        warrior,
+        Warrior,
         Settler
     }
     /// <summary>
@@ -21,14 +21,20 @@ namespace SparkAge.Model.Units
         public int MaxMovement;//最大移动力
         public int MovementLeft;//剩余移动力
 
-        public Unit(UnitType type, HexCoord position, int own, int maxMovement, int movementLeft)
+        public Unit(UnitType type, HexCoord position, int own)
         {
             this.type = type;
             Position = position;
             this.own = own;
-            MaxMovement = maxMovement;
-            MovementLeft = movementLeft;
+            switch (type)
+            {
+                case UnitType.Warrior:
+                    MovementLeft = MaxMovement = 3;
+                    break;
+                case UnitType.Settler:
+                    MovementLeft = MaxMovement = 4;
+                    break;
+            }
         }
-
     }
 }

@@ -6,7 +6,7 @@ using SparkAge.Model.Units;
 
 public class GameStateTests
 {
-    static SparkAge.Model.Units.Unit UnitAt(HexCoord pos, int movement) => new(UnitType.warrior, pos, 0, movement, movement);
+    static Unit UnitAt(HexCoord pos, int movement) => new(UnitType.Warrior, pos, 0);
 
     static GameState MakeMap(params (HexCoord c, TerrainType t)[] tiles)
     {

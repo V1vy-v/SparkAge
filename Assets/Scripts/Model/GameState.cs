@@ -56,7 +56,7 @@ namespace SparkAge.Model
             return null;
         }
         /// <summary>
-        /// 查询某个格子是否处于城市
+        /// 查询某个格子是否是城市
         /// </summary>
         /// <param name="hexCoord"></param>
         /// <returns></returns>
@@ -64,8 +64,49 @@ namespace SparkAge.Model
         {
             foreach (var city in Cities)
             {
+                if (city.Position.Equals(hexCoord))
+                    return city;
+            }
+            return null;
+        }
+        /// <summary>
+        /// 查询某个格子是否处于城市
+        /// </summary>
+        /// <param name="hexCoord"></param>
+        /// <returns></returns>
+        public City GetCityIn(HexCoord hexCoord)
+        {
+            foreach (var city in Cities)
+            {
                 if (city.Position.DistanceTo(hexCoord) <= city.Radius)
                     return city;
+            }
+            return null;
+        }
+        /// <summary>
+        /// 查询某个格子单位是否能出生
+        /// </summary>
+        /// <param name="hex"></param>
+        /// <returns></returns>
+        private bool CanPlace(HexCoord hex) => 
+            Map.Tiles[hex].Walkable && 
+            GetUnitAt(hex) == null && 
+            GetCityAt(hex) == null;
+        /// <summary>
+        /// 返回周围出生格
+        /// </summary>
+        /// <param name="center"></param>
+        /// <returns></returns>
+        public HexCoord? FindUnitSpawnNear(HexCoord center)
+        {
+            if (CanPlace(center))
+                return center;
+
+            for(int i = 0; i < 5; i++)
+            {
+                HexCoord point = center.Neighbor(i);
+                if (CanPlace(point))
+                    return point;
             }
             return null;
         }
@@ -103,6 +144,91 @@ namespace SparkAge.Model
             }
             return new List<HexCoord>(movementLeftDic.Keys);
         }
+
+        /// <summary>
+        /// BFS算法搜索初始出生点的地块
+        /// </summary>
+        /// <param name="center"></param>
+        /// <returns></returns>
+        public HexCoord? FindSpawnPoint(HexCoord center)
+        {
+            Queue<HexCoord> queue = new();
+            List<HexCoord> visited = new List<HexCoord> { center };
+            queue.Enqueue(center);
+            while (queue.Count > 0)
+            {
+                HexCoord curHex = queue.Dequeue();
+                if (Map.Tiles[curHex].Walkable)
+                    return curHex;
+
+                for (int i = 0; i < 6; i++)
+                {
+                    HexCoord newHex = curHex.Neighbor(i);
+                    if (Map.IsInMap(newHex) && !visited.Contains(newHex))
+                    {
+                        queue.Enqueue(newHex);
+                        visited.Add(newHex);
+                    }
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 数据层：回合结束
+        /// </summary>
+        public void EndTurn()
+        {
+            //结算回合数
+            TurnNumber++;
+            //结算每个城市生产力变化
+            foreach (var City in Cities)
+                City.Production += GameRules.CityProductionPerTurn;
+
+            //添加UI面板变化
+
+
+            //所有单位恢复移动力
+            foreach (var unit in Units)
+                unit.MovementLeft = unit.MaxMovement;
+        }
+
+        public enum BuildUnitFailReason { Success, NotEnoughProduction, NoUnitSpawnNear }
+        public readonly struct BuildUnitResult
+        {
+            public readonly bool Success;
+            public readonly BuildUnitFailReason Reason;
+            public readonly Unit Unit;
+            public BuildUnitResult(bool success, BuildUnitFailReason reason, Unit unit)
+            {
+                Success = success;
+                Reason = reason;
+                Unit = unit;
+            }
+        }
+        /// <summary>
+        /// 数据层：在某个城市造单位
+        /// </summary>
+        /// <param name="city"></param>
+        /// <param name="type"></param>
+        /// <returns></returns>
+        public BuildUnitResult BuildUnit(City city, UnitType type)
+        {
+            int production = (type == UnitType.Warrior) ? GameRules.WarriorCost : GameRules.SettlerCost;
+            if (city.Production < production)
+                return new BuildUnitResult(false, BuildUnitFailReason.NotEnoughProduction, null);
+
+            HexCoord? spawnHex = FindUnitSpawnNear(city.Position);
+            if(spawnHex == null)
+                return new BuildUnitResult(false, BuildUnitFailReason.NoUnitSpawnNear, null);
+
+            Unit unit = new Unit(type, (HexCoord)spawnHex, city.Owner);
+            Units.Add(unit);
+            city.Production -= production;
+
+            return new BuildUnitResult(true, BuildUnitFailReason.Success, unit);
+        }
+
         public enum MoveFailReason { Success, TileOccupied, Unreachable }
         public readonly struct MoveResult
         {
@@ -154,6 +280,11 @@ namespace SparkAge.Model
                 City = city;
             }
         }
+        /// <summary>
+        /// 数据层：建城
+        /// </summary>
+        /// <param name="settler"></param>
+        /// <returns></returns>
         public FoundCityResult FoundCity(Unit settler)
         {
             if (settler.type != UnitType.Settler)
@@ -177,54 +308,11 @@ namespace SparkAge.Model
             Units.Remove(settler);
 
             //新建城市
-            City city = new City(settler.Position, GameRules.InitialCityRadius, CurrentPlayer);
+            City city = new City(CurrentPlayer, settler.Position, GameRules.InitialCityRadius);
             Cities.Add(city);
             ps.CityNum++;
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);
-        }
-
-        /// <summary>
-        /// BFS算法搜索第一个可以作为出生点的地块
-        /// </summary>
-        /// <param name="center"></param>
-        /// <returns></returns>
-        public HexCoord? FindSpawnPoint(HexCoord center)
-        {
-            Queue<HexCoord> queue = new();
-            List<HexCoord> visited = new List<HexCoord> { center };
-            queue.Enqueue(center);
-            while (queue.Count > 0)
-            {
-                HexCoord curHex = queue.Dequeue();
-                if (Map.Tiles[curHex].Walkable)
-                    return curHex;
-
-                for (int i = 0; i < 6; i++)
-                {
-                    HexCoord newHex = curHex.Neighbor(i);
-                    if (Map.IsInMap(newHex) && !visited.Contains(newHex))
-                    {
-                        queue.Enqueue(newHex);
-                        visited.Add(newHex);
-                    }
-                }
-            }
-            return null;
-        }
-
-        /// <summary>
-        /// 回合结束
-        /// </summary>
-        public void EndTurn()
-        {
-            TurnNumber++;
-
-            //添加UI面板变化
-
-
-            foreach (var unit in Units)
-                unit.MovementLeft = unit.MaxMovement;
         }
     }
 }

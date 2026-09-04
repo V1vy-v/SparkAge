@@ -1,13 +1,11 @@
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
-using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.Events;
 using static SparkAge.Framework.EventCenter.EventDefine;
 
 namespace SparkAge.View
@@ -17,8 +15,8 @@ namespace SparkAge.View
     /// </summary>
     public class UnitView : MonoBehaviour
     {
-        [SerializeField] Color warriorColor = Color.red;
-        [SerializeField] Color settlerColor = Color.blue;
+        [SerializeField] Material warriorMaterial;
+        [SerializeField] Material settlerMaterial;
 
         //外部提供字段
         GameState state;
@@ -32,6 +30,15 @@ namespace SparkAge.View
         {
             this.state = state;
             this.hexSize = hexSize;
+
+            warriorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = Color.red
+            };
+            settlerMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = Color.blue
+            };
         }
 
         private void Start()
@@ -40,6 +47,13 @@ namespace SparkAge.View
             EventCenter.Instance.AddListener<FoundCityEvent>(e =>
             {
                 DestroyUnit(e.ConsumedSettler);
+                Debug.Log("城市已建立");
+            });
+            //订阅造兵事件
+            EventCenter.Instance.AddListener<BuildUnitEvent>(e =>
+            {
+                BuildUnit(e.BuiltUnit);
+                Debug.Log("单位已造好");
             });
         }
 
@@ -52,18 +66,12 @@ namespace SparkAge.View
 
             switch (unit.type)
             {
-                case UnitType.warrior:
-                    unitObj.GetComponent<MeshRenderer>().material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                    {
-                        color = warriorColor
-                    };
+                case UnitType.Warrior:
+                    unitObj.GetComponent<MeshRenderer>().material = warriorMaterial;
                     unitObj.transform.localScale = Vector3.one * 0.5f;
                     break;
                 case UnitType.Settler:
-                    unitObj.GetComponent<MeshRenderer>().material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                    {
-                        color = settlerColor
-                    };
+                    unitObj.GetComponent<MeshRenderer>().material = settlerMaterial;
                     unitObj.transform.localScale = Vector3.one * 0.3f;
                     break;
             }

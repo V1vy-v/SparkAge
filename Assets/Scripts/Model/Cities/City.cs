@@ -4,15 +4,17 @@ namespace SparkAge.Model.Cities
 {
     public class City
     {
-        public HexCoord Position;
-        public int Radius;
         public int Owner;
+        public int Radius;
+        public HexCoord Position;
+        public int Production;
 
-        public City(HexCoord position, int radius, int owner)
+        public City(int owner, HexCoord position, int radius, int production = 5)
         {
+            Owner = owner;
             Position = position;
             Radius = radius;
-            Owner = owner;
+            Production = production;
         }
     }
 }

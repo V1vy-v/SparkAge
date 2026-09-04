@@ -1,6 +1,7 @@
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
+using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections.Generic;
@@ -28,11 +29,13 @@ namespace SparkAge.View
         Mesh reachableMesh;//单位可到达地块网格
         MeshRenderer highlight;//地块高亮渲染器
         MeshRenderer unitHighlight;//单位选中框渲染器
+        List<GameObject> reachableObjs = new List<GameObject>(128);//可移动范围对象
 
         Unit selectedUnit;//当前选中的单位
         public Unit SelectedUnit => selectedUnit;//当前选中的单位：外部访问接口
         List<HexCoord> reachableHex = new();//当前单位可移动范围
-        List<GameObject> reachableObjs = new List<GameObject>(128);//可移动范围对象
+        City selectedCity;//当前选中的城市
+        public City SelectedCity => selectedCity;//当前选中的单位：外部访问接口
 
 
         public void Init(GameState state, float hexSize, Mesh hexMesh)
@@ -130,6 +133,7 @@ namespace SparkAge.View
             //在地图内:
             //显示地块高亮
             ShowHighlight(clickHex);
+
             //是否选中单位
             selectedUnit = state.GetUnitAt((HexCoord)clickHex);
             if (selectedUnit != null)
@@ -139,6 +143,21 @@ namespace SparkAge.View
                 //断开引用
                 selectedUnit = null;
                 ClearSelection();
+            }
+
+            //是否选中城市
+            selectedCity = state.GetCityAt((HexCoord)clickHex);
+            if (selectedCity != null)
+            {
+                //调用UI层，显示可建造单位/建筑
+                Debug.Log("请选择建造单位/建筑");
+            }
+            else
+            {
+                //断开引用
+                selectedCity = null;
+                //调用UI层，隐藏可建造单位/建筑
+                Debug.Log("隐藏选择建造界面");
             }
         }
         /// <summary>

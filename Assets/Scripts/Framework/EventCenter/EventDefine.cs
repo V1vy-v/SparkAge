@@ -7,6 +7,16 @@ namespace SparkAge.Framework.EventCenter
 {
     public class EventDefine
     {
+        public class BuildUnitEvent
+        {
+            public City City;
+            public Unit BuiltUnit;
+            public BuildUnitEvent(City city, Unit builtUnit)
+            {
+                City = city;
+                BuiltUnit = builtUnit;
+            }
+        }
         public class UnitMoveEvent
         {
             public Unit unit;

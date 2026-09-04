@@ -2,9 +2,7 @@ using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
-using SparkAge.Model.Hex;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
 

@@ -8,10 +8,10 @@
 - 技术栈：Unity 2022.3 LTS + 2D URP，C#，Git。
 
 ## 核心架构决策
-1. **Core / Game 分层**：Core 为纯 C# 逻辑层（不依赖 UnityEngine），Game 为表现层。可单测、可复现；联机时整个状态序列化同步。
+1. **Model / Game 分层**：Model 为纯 C# 逻辑层（不依赖 UnityEngine），Game 为表现层。可单测、可复现；联机时整个状态序列化同步。
 2. **Hex 坐标**：内部统一用轴向坐标 (q, r)，cube 思维辅助。
 3. **地图**：程序化生成，值噪声 + seed 确定性 + 边缘强制水域。
-4. **不用 Tilemap**：数据归属（Tilemap 把数据存在引擎组件里，违背"Core 唯一数据源"）、手绘用不上、小规模不需要合批优化。
+4. **不用 Tilemap**：数据归属（Tilemap 把数据存在引擎组件里，违背"Model 唯一数据源"）、手绘用不上、小规模不需要合批优化。
 5. **临时状态与永久数据分离**：地形是数据；选中/范围高亮是 UI 临时状态，用独立对象 + SetActive 切换。
 6. **PPU = size/2**，保证六边形半径 = hexSize = 1，格子无缝。
 7. **相机拖动**：抓取点模式（避免采样反馈振荡）。
@@ -20,7 +20,7 @@
 10. **选择逻辑**：收敛为 SelectUnit / ClearSelection；"显示范围"幂等（先全隐藏再显示），避免补丁变量。
 11. **范围高亮对象**：预创建 + 开关（固定容量池）；通用 GameObjectPool 留给以后。
 12. **不缓存可达范围**：每次选中现算，避免移动后脏数据。
-13. **Core 层零 UnityEngine**：Debug.Log 也不行。失败用结果对象表达（MoveResult + 失败原因），表现层负责反馈。
+13. **Model 层零 UnityEngine**：Debug.Log 也不行。失败用结果对象表达（MoveResult + 失败原因），表现层负责反馈。
 14. **移动交互**：右键移动与相机右键拖拽冲突，后续考虑左键移动或拖拽阈值。
 15. **测试策略（W2.3）**：求职 demo 优先功能迭代，新单测延后到 W6 集中补齐；但已有测试必须保持有效（有断言、全绿），防止"假绿"。
 
@@ -42,18 +42,18 @@
   - SelectionController：_selectedUnit、_highlight、_unitHighlight、高亮色×3、_unitHighlightSprite、_reachableSprite、reachableHex、reachableObjs、选中/范围方法；注入(state, hexSize, hexSprite)；_selectedUnit 用属性暴露给 MapView
 - 注意：SelectionController 离开 MonoBehaviour 后 print 要改 Debug.Log。
 ## 问答记录：3D 化可行性评估（2026-09-01）
-- 结论：现在改是最佳时机，工作量不大——Core（Hex/寻路/移动/GameState）零改动，全部复用；表现层 4-5 个文件重写，纯功能约 1-2 天，美术资产另算。
+- 结论：现在改是最佳时机，工作量不大——Model（Hex/寻路/移动/GameState）零改动，全部复用；表现层 4-5 个文件重写，纯功能约 1-2 天，美术资产另算。
 - 最省力路线：俯视角 3D 棋盘（不是自由相机）——HexLayout 只在 XZ 平面工作、地块换 3D 六棱柱、高亮用贴地半透明平面、相机保持正交/弱透视。改动最小。
 - 主要成本在美术：3D 六棱柱 + 单位低模 + 材质光照；求职 demo 建议 blockout/低模风格控制成本。
 ## 3D 迁移决策（2026-09-01）
 16. **项目改为 3D（更贴近文明6）**，经另一对话确认。原则：
-    - Core 层零改动（Hex 数学/MapData/GameState/Unit/Pathfinding/单测 全部不动）——分层的红利在此兑现。
+    - Model 层零改动（Hex 数学/MapData/GameState/Unit/Pathfinding/单测 全部不动）——分层的红利在此兑现。
     - 只迁移 Game 表现层：HexSpriteFactory → HexMeshFactory（程序化六边形 Mesh）；单位用内置 3D 图元占位；高亮/范围用半透明 3D Mesh。
     - 坐标：HexToPixel(x,y) → 3D (x, 0, y)；拾取改为"射线 + y=0 平面求交"（Plane.Raycast），再 PixelToHex。
     - 相机：Perspective 俯视，缩放=调高度/FOV，平移沿用抓取点模式。
     - 现阶段不做：相机旋转、地形高度起伏（y=0）、真实模型（占位图元，美术 W6）。
     - 顺序：先完成 W3.0 拆分，再逐组件 3D 化，再清理 2D 残留，最后回归验证（单测+手动）。
-17. **表现层组件用 MonoBehaviour（W3.0 修正）**：需要生命周期（协程/Update/OnEnable）的 Game 层组件用 MonoBehaviour，用运行时 `new GameObject(...).AddComponent<T>()` + Init 创建，避免 Inspector 布线；Core 层保持纯 C# 不变。普通类 + 手动 Tick（由 MonoBehaviour 每帧调用）是"显式更新"的可测试替代方案，记入备选。
+17. **表现层组件用 MonoBehaviour（W3.0 修正）**：需要生命周期（协程/Update/OnEnable）的 Game 层组件用 MonoBehaviour，用运行时 `new GameObject(...).AddComponent<T>()` + Init 创建，避免 Inspector 布线；Model 层保持纯 C# 不变。普通类 + 手动 Tick（由 MonoBehaviour 每帧调用）是"显式更新"的可测试替代方案，记入备选。
 
 ## 问答记录：_isMoving 的归属与跨类使用（2026-09-01）
 - 方案A（最贴合当前结构）：_isMoving 留在 UnitView（private），公开只读属性 `IsMoving`，MapView.Update 读它挡输入。
@@ -99,10 +99,10 @@
 - 根因：三角形绕序反了。HexMeshFactory 的 triangles = {0,2,1, 0,3,2, 0,4,3, 0,5,4}，叉积算出几何法线朝 -Y（朝下），而相机在 +Y 上方 → 看到的是背面，被背面剔除 → 不渲染。
 - 修复：每三个索引反转 → {0,1,2, 0,2,3, 0,3,4, 0,4,5}。
 - 验证：Scene 里开 Cull Off 或显示法线；修复后地块朝上即可见。
-- 顺带：MapView 有多余的 `using System.Drawing;`（会和 UnityEngine.Color 冲突/编译风险），删掉。18. **架构方向定为"命令驱动的分层"（2026-09）**：详见 docs/architecture.md。要点：Core 唯一事实源；玩家操作=可序列化命令（单机本地执行=联机发主机执行，同一路径）；Core 系统产事件、表现层消费；EndTurn 是有序流水线；UI 状态（选中/相机）不进 Core；迁移增量进行，W3.2 起新功能直接按新模式落位。
+- 顺带：MapView 有多余的 `using System.Drawing;`（会和 UnityEngine.Color 冲突/编译风险），删掉。18. **架构方向定为"命令驱动的分层"（2026-09）**：详见 docs/architecture.md。要点：Model 唯一事实源；玩家操作=可序列化命令（单机本地执行=联机发主机执行，同一路径）；Model 系统产事件、表现层消费；EndTurn 是有序流水线；UI 状态（选中/相机）不进 Model；迁移增量进行，W3.2 起新功能直接按新模式落位。
 
 ## 问答记录：FoundCity 用途说明 + 文档损坏提醒（2026-09-03）
-- FoundCity/FoundCityOrder（W3.2）：移民建城动作——校验目标格（无城市/无单位/可建城/城市数<上限），Core 执行 Cities.Add + 消耗移民，表现层生成城市视觉。
+- FoundCity/FoundCityOrder（W3.2）：移民建城动作——校验目标格（无城市/无单位/可建城/城市数<上限），Model 执行 Cities.Add + 消耗移民，表现层生成城市视觉。
 - 勘误（2026-09-03）：全量扫描后确认所有文档/代码均为合法 UTF-8（严格解码零失败），并无中文损坏；此前看到的乱码/孤立 "n" 是读取端未按 UTF-8 解码（终端 GBK）的显示假象。真实缺陷仅是 progress.md 里出现字面 "`n" 把多行挤在一起，已修复。
 ## 协作约定补充：统一 UTF-8（2026-09-03）
 1. 所有文档/代码统一 UTF-8（.md 保留 BOM；.cs 无 BOM 的 UTF-8 亦可，勿写 GBK）。
@@ -111,7 +111,7 @@
 ## 问答记录：城市范围 List<HexCoord> 不需要存进 City（2026-09-03）
 - 依据：gamedesign.md 明确"领地=距中心≤2，派生不存储"；城市不移动、半径固定 → 存储是冗余 + 脏数据风险 + 序列化负担；产出为统一固定值，无需遍历领地。
 - 做法：City 只存 Position/Owner（+将来生产状态），提供 GetTerritory(MapData) 派生方法；半径常量放 GameRules.CityRadius。
-- 例外：将来做扩建/买地/中心可变时才升级为存储列表，demo 不加。19. **表现层落地形态定为 MVC 风格 + EventBus（2026-09）**：Core=Model（纯 C#，不感知事件）；GameController=唯一 Controller（装配/输入/调 Core/编排）；MapView/UnitView/CityView/SelectionView=View（纯显示）；EventBus=表现层事件中心（静态服务，允许全局）。异步完成/跨组件反应走事件，单一接收方走方法调用；Core 不发布不订阅事件。
+- 例外：将来做扩建/买地/中心可变时才升级为存储列表，demo 不加。19. **表现层落地形态定为 MVC 风格 + EventBus（2026-09）**：Model=Model（纯 C#，不感知事件）；GameController=唯一 Controller（装配/输入/调 Model/编排）；MapView/UnitView/CityView/SelectionView=View（纯显示）；EventBus=表现层事件中心（静态服务，允许全局）。异步完成/跨组件反应走事件，单一接收方走方法调用；Model 不发布不订阅事件。
 20. **网络定案（2026-09，Mirror）**：选 Mirror 作传输层（NetworkMessage 收发）；主机权威 + 整状态广播；游戏状态保持在纯 C# Model，不做成 Mirror 同步对象/变量；演示走本机/LAN；W4 AI 先建命令接缝（SubmitOrder），W5 网络复用。
 
 21. **EventCenter 用单例（2026-09）**：轻量单例（`Instance` 静态属性 + 实例方法 + `Clear()`），不用场景 MonoBehaviour。理由：EventCenter 是"服务"（允许全局），且不需要 Unity 生命周期；`Clear()` 用于开新局/测试。Framework/Singleton 同时提供 `MonoSingleton<T>` 基类供以后需要场景生命周期的服务（如 AudioManager）使用。调用改为 `EventCenter.Instance.Subscribe/Publish`。
@@ -120,15 +120,15 @@
 - 结论：两者都作为 GameController 的 [SerializeField]（场景唯一配置点）。
   - seed：只用于生成地图（Model 创建参数），生成完即完成使命，不进 View。
   - hexSize：所有要摆位置的 View（Map/Unit/Selection/City/Camera）都用 → Controller 统一持有并在 Init 时注入，View 不再各自 SerializeField。
-- 目标分工：GameController=装配+输入+调 Core+编排；MapView 只剩渲染（BuildTiles/材质/mesh）；state/输入/EndTurn/出生摆放等从 MapView 迁到 GameController。
+- 目标分工：GameController=装配+输入+调 Model+编排；MapView 只剩渲染（BuildTiles/材质/mesh）；state/输入/EndTurn/出生摆放等从 MapView 迁到 GameController。
 - 现状：重构未完成——MapView 仍带 Controller 逻辑（state/Update/出生），GameController 骨架未接完（mapView 未赋值、缺 seed/hexSize/hexMesh 字段），另有 SelectionController.cs/HexPicker.cs 疑似旧文件待清理。
 ## 问答记录：静态 HexPicker 如何拿 state/hexSize（2026-09-04）
 - 推荐：静态方法改为带参 `GetClickHex(GameState state, float hexSize)`，调用方（持有实例状态）传入；或职责再切细——HexPicker 只做"屏幕点→地面世界点"纯几何，PixelToHex/IsInMap 留在调用方。
 - 不推荐在静态类里存静态全局 state/hexSize（隐藏全局可变依赖）。
 - 现状：HexPicker.GetClickHex 引用了不存在的 state/hexSize，编译不过，需按上面修。
 ## 问答记录：事件中心会不会跨过控制层（2026-09-04）
-- 结论：按本方案，"GameState 发布表现层事件"是不正常的——违背"Core 不发布不订阅事件"；View 订阅自动反应本身正常，但发布权归 Controller。
-- 正确链：输入→Order→Core.Execute 改状态并返回事件数据（纯数据）→ GameController 决定表现反应（转 EventCenter.Publish 或直接调 View 方法）→ View 播动画。
+- 结论：按本方案，"GameState 发布表现层事件"是不正常的——违背"Model 不发布不订阅事件"；View 订阅自动反应本身正常，但发布权归 Controller。
+- 正确链：输入→Order→Model.Execute 改状态并返回事件数据（纯数据）→ GameController 决定表现反应（转 EventCenter.Publish 或直接调 View 方法）→ View 播动画。
 - 事件中心用于多订阅者/解耦；单一接收方走方法调用。View 不得直接订阅 Model 状态变化自行动画（Controller 失编排、联机同路径被破坏）。
 ## 问答记录：FoundCity 走 GameController 驱动表现（2026-09-04）
 - Execute(order)：架构目标里的统一命令入口（GameState.Execute(Order) 校验+分发+返回事件数据）；现状尚未实现，FoundCity/MoveUnit 仍是直调方法，可增量迁移。
@@ -139,3 +139,9 @@
 - 报错根因：paramEvents 用字符串 eventName 作键，同一名字下挂了不同类型委托（"FoundCity" 同时被 UnityAction<Unit> 和 UnityAction<City> 注册），AddListener 里 Delegate.Remove(existing, action) 类型不同 → ArgumentException。
 - 修复：键改成载荷类型 typeof(T)（推荐，事件=数据对象，去掉字符串名）；或保留名字用复合键 (eventName, typeof(T))。
 - 另发现 bug：EventTrigger<T> 查的是 noParamEvents（错字典），带参事件实际永远触发不了。
+
+## 问答记录：新造单位出生格全被占怎么办（2026-09-04，W3.2）
+- 规则建议：出生格 = 城市中心优先；中心不可用则 BFS 由近及远找"可行走+无单位+非其他城市中心"的空格；全满 → 生产挂起（进度保留/继续累积），有空位再落地，不丢单位不挤占。
+- 城市碰撞只算中心格（领地=视觉范围，不该挡通行/落位，除非 W4 做 ZOC）。
+- 现状缺口：BuildUnit 只扣产出建 Unit 对象，未选出生格、未加入 Units；需补 BFS 定位 + 落位。
+- 帮助方法可复用 FindSpawnPoint 的 BFS 模式。

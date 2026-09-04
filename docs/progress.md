@@ -24,9 +24,9 @@
 - 评审修复：去掉可达缓存；出生点用 Walkable
 
 ### W2.3（完成，单测延后）
-- ✅ A* 重写（PriorityQueue + PathResult）、MoveUnit（Core）校验/扣减/更新
+- ✅ A* 重写（PriorityQueue + PathResult）、MoveUnit（Model）校验/扣减/更新
 - ✅ 表现层：_selectedUnit、Unit→GameObject 映射、移动后刷新
-- ✅ 评审修复：Core 去掉 UnityEngine（返回结果对象）、MoveUnit 按结果处理
+- ✅ 评审修复：Model 去掉 UnityEngine（返回结果对象）、MoveUnit 按结果处理
 - ⏳ 延后待办（W6 集中补）：
   1. Pathfinding / MoveUnit 单测
   2. 恢复 Plains_Movement2_ReachesAllWithinDistance2 的断言（当前"假绿"）
@@ -41,13 +41,17 @@
 - 任务：把 MapView 拆成 MapView（协调者+地图渲染）/ UnitView / SelectionController，纯搬代码、行为零变化
 
 ### W3.1（完成）
-- EndTurn（Core）+ 空格触发 + 刷新选中
+- EndTurn（Model）+ 空格触发 + 刷新选中
 - UI 统一延后：用户熟悉 UGUI，回合数/面板等 UI 批量后做
 - 任务：回合系统（回合数、当前玩家、EndTurn 重置单位移动力、回合显示）
 - 为 W3.2 城市/生产打地基
 
 ### W3.2+（待开始）
 - 城市（移民建城、生产队列、每回合产出）；科技树；战斗与胜负；联机
+
+
+
+
 
 
 
