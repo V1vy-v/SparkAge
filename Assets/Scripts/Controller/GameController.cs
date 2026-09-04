@@ -49,10 +49,14 @@ namespace SparkAge.Controller
         }
         private void Start()
         {
-            //订阅单位移动事件
+            //订阅事件
             EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
             {
                 isMoving = e.isMoving;
+            });
+            EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
+            {
+                isMoving = false;
             });
 
             //构建地图
@@ -66,7 +70,19 @@ namespace SparkAge.Controller
             HexCoord? spawnPoint = state.FindSpawnPoint(state.Map.Center);
             if (spawnPoint != null)
             {
-                Unit unit = new Unit(UnitType.Settler, (HexCoord)spawnPoint, 1);
+                Unit unit = new Unit(1, UnitType.Settler, (HexCoord)spawnPoint);
+                GameObject obj = unitView.BuildUnit(unit);
+                state.Units.Add(unit);
+                unitView.UnitObjs[unit] = obj;
+            }
+            else
+                print("创建单位出生点失败！！！");
+
+            //初始拥有一个移民
+            spawnPoint = state.FindSpawnPoint(new HexCoord(1, 2));
+            if (spawnPoint != null)
+            {
+                Unit unit = new Unit(2, UnitType.Settler, (HexCoord)spawnPoint);
                 GameObject obj = unitView.BuildUnit(unit);
                 state.Units.Add(unit);
                 unitView.UnitObjs[unit] = obj;
@@ -112,7 +128,13 @@ namespace SparkAge.Controller
             {
                 HexCoord? hex = GetClickHex();
                 if (hex != null)
-                    TryMoveUnit(selectionView.SelectedUnit, (HexCoord)hex);
+                {
+                    Unit tarUnit = state.GetUnitAt((HexCoord)hex);
+                    if (tarUnit == null)
+                        TryMoveUnit(selectionView.SelectedUnit, (HexCoord)hex);
+                    else
+                        TryAttackUnit(selectionView.SelectedUnit, tarUnit);
+                }
             }
         }
 
@@ -208,6 +230,31 @@ namespace SparkAge.Controller
             //发布造兵事件
             EventCenter.Instance.EventTrigger<BuildUnitEvent>(new BuildUnitEvent(city, result.Unit));
 
+        }
+
+        public void TryAttackUnit(Unit attacker, Unit defender)
+        {
+            AttackUnitResult result = state.AttackUnit(attacker, defender);
+            if (!result.Success)
+            {
+                switch (result.Reason)
+                {
+                    case AttackUnitFailReason.IsSameOwner:
+                        Debug.Log("目标单位为己方单位，不可攻击");
+                        break;
+                    case AttackUnitFailReason.IsSettler:
+                        Debug.Log("当前单位为移民，不可攻击");
+                        break;
+                    case AttackUnitFailReason.Unreachable:
+                        Debug.Log("该地块不可到达");
+                        break;
+                }
+                return;
+            }
+
+            //调用攻击单位协程
+            isMoving = true;
+            unitView.AttackUnit(attacker, defender, result.AttackerIsDead, result.DefenderIsDead, result.Path);
         }
     }
 }

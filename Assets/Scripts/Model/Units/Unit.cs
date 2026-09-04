@@ -15,13 +15,18 @@ namespace SparkAge.Model.Units
     /// </summary>
     public class Unit
     {
+        public int own;//所属玩家
         public UnitType type;//单位类型
         public HexCoord Position;//位置
-        public int own;//所属玩家
+
+        public int Atk;//攻击力
+        public int Def;//防御力
+        public int Hp;//当前生命
+        public int MaxHp;//最大生命
         public int MaxMovement;//最大移动力
         public int MovementLeft;//剩余移动力
 
-        public Unit(UnitType type, HexCoord position, int own)
+        public Unit(int own, UnitType type, HexCoord position)
         {
             this.type = type;
             Position = position;
@@ -29,10 +34,16 @@ namespace SparkAge.Model.Units
             switch (type)
             {
                 case UnitType.Warrior:
-                    MovementLeft = MaxMovement = 3;
+                    Atk = GameRules.WarriorAtk;
+                    Def = GameRules.WarriorDef;
+                    Hp = MaxHp = GameRules.WarriorMaxHp;
+                    MovementLeft = MaxMovement = GameRules.WarriorMaxMovement;
                     break;
                 case UnitType.Settler:
-                    MovementLeft = MaxMovement = 4;
+                    Atk = GameRules.SettlerAtk;
+                    Def = GameRules.SettlerDef;
+                    Hp = MaxHp = GameRules.SettlerMaxHp;
+                    MovementLeft = MaxMovement = GameRules.SettlerMaxMovement;
                     break;
             }
         }

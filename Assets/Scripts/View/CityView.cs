@@ -42,13 +42,12 @@ namespace SparkAge.View
         /// </summary>
         public GameObject BuildCity(City city)
         {
-            GameObject obj = new GameObject();
-            MeshFilter mf = obj.AddComponent<MeshFilter>();
-            mf.mesh = cityMesh;
-            MeshRenderer mr = obj.AddComponent<MeshRenderer>();
-            mr.material = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            GameObject obj = Instantiate(Resources.Load<GameObject>("Prefabs/City"));
+
+            obj.transform.Find("Marker").GetComponent<MeshRenderer>().material =
+                new Material(Shader.Find("Universal Render Pipeline/Lit"))
             {
-                color = Color.gray
+                color = ViewTools.GetPlayerColor(city.Owner)
             };
 
             cityObjs[city] = obj;

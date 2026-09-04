@@ -58,6 +58,19 @@ namespace SparkAge.View
             {
                 ClearSelection();
             });
+            EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
+            {
+                if (!e.AttackerIsDead)
+                {
+                    SelectUnit(e.Attacker);
+                    ShowHighlight(e.Attacker.Position);
+                }
+                else
+                {
+                    ClearHighlight();
+                    ClearSelection();
+                }
+            });
             EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
             {
                 SelectUnit(e.unit);

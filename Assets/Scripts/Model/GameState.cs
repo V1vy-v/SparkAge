@@ -3,6 +3,7 @@ using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
 using SparkAge.Model.Players;
 using SparkAge.Model.Units;
+using System;
 using System.Collections.Generic;
 
 namespace SparkAge.Model
@@ -16,8 +17,10 @@ namespace SparkAge.Model
         public List<PlayerState> Players;//所有玩家数据
         public List<Unit> Units;//所有单位数据
         public List<City> Cities;//所有城市数据
-        int TurnNumber;//当前回合数
-        int CurrentPlayer;//当前可操作的玩家
+        int turnNumber;//当前回合数
+        public int TurnNumber => turnNumber;
+        int currentPlayer;//当前可操作的玩家
+        public int CurrentPlayer => currentPlayer;
 
         public GameState(MapData map)
         {
@@ -25,8 +28,8 @@ namespace SparkAge.Model
             Players = new List<PlayerState>() { new PlayerState(1) };
             Units = new List<Unit>();
             Cities = new List<City>();
-            TurnNumber = 1;
-            CurrentPlayer = 1;
+            turnNumber = 1;
+            currentPlayer = 1;
         }
         /// <summary>
         /// 根据id获取玩家数据方法
@@ -84,28 +87,19 @@ namespace SparkAge.Model
             return null;
         }
         /// <summary>
-        /// 查询某个格子单位是否能出生
-        /// </summary>
-        /// <param name="hex"></param>
-        /// <returns></returns>
-        private bool CanPlace(HexCoord hex) => 
-            Map.Tiles[hex].Walkable && 
-            GetUnitAt(hex) == null && 
-            GetCityAt(hex) == null;
-        /// <summary>
-        /// 返回周围出生格
+        /// 查询周围出生格内可出生单位的格子
         /// </summary>
         /// <param name="center"></param>
         /// <returns></returns>
         public HexCoord? FindUnitSpawnNear(HexCoord center)
         {
-            if (CanPlace(center))
+            if (Map.Tiles[center].Walkable && GetUnitAt(center) == null)
                 return center;
 
             for(int i = 0; i < 5; i++)
             {
                 HexCoord point = center.Neighbor(i);
-                if (CanPlace(point))
+                if (Map.Tiles[point].Walkable && GetUnitAt(point) == null)
                     return point;
             }
             return null;
@@ -180,7 +174,7 @@ namespace SparkAge.Model
         public void EndTurn()
         {
             //结算回合数
-            TurnNumber++;
+            turnNumber++;
             //结算每个城市生产力变化
             foreach (var City in Cities)
                 City.Production += GameRules.CityProductionPerTurn;
@@ -222,7 +216,7 @@ namespace SparkAge.Model
             if(spawnHex == null)
                 return new BuildUnitResult(false, BuildUnitFailReason.NoUnitSpawnNear, null);
 
-            Unit unit = new Unit(type, (HexCoord)spawnHex, city.Owner);
+            Unit unit = new Unit(city.Owner, type, (HexCoord)spawnHex);
             Units.Add(unit);
             city.Production -= production;
 
@@ -250,7 +244,6 @@ namespace SparkAge.Model
         /// <returns></returns>
         public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
         {
-
             if (!GetReachableTiles(unit).Contains(tarHex))
                 return new MoveResult(false, MoveFailReason.Unreachable, null);
             if (GetUnitAt(tarHex) != null)
@@ -281,7 +274,7 @@ namespace SparkAge.Model
             }
         }
         /// <summary>
-        /// 数据层：建城
+        /// 数据层：移民建城
         /// </summary>
         /// <param name="settler"></param>
         /// <returns></returns>
@@ -308,11 +301,68 @@ namespace SparkAge.Model
             Units.Remove(settler);
 
             //新建城市
-            City city = new City(CurrentPlayer, settler.Position, GameRules.InitialCityRadius);
+            City city = new City(settler.own, settler.Position, GameRules.InitialCityRadius);
             Cities.Add(city);
             ps.CityNum++;
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);
+        }
+
+
+        public enum AttackUnitFailReason { Success, IsSameOwner, IsSettler, Unreachable }
+        public readonly struct AttackUnitResult
+        {
+            public readonly bool Success;
+            public readonly AttackUnitFailReason Reason;
+            public readonly bool AttackerIsDead;
+            public readonly bool DefenderIsDead;
+            public readonly List<HexCoord> Path;
+            public AttackUnitResult(bool success, AttackUnitFailReason reason, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
+            {
+                Success = success;
+                Reason = reason;
+                AttackerIsDead = attackerIsDead;
+                DefenderIsDead = defenderIsDead;
+                Path = path;
+            }
+        }
+        public AttackUnitResult AttackUnit(Unit attacker, Unit defender)
+        {
+            if (defender.own == attacker.own) 
+                return new AttackUnitResult(false, AttackUnitFailReason.IsSameOwner, false, false, null);
+
+            if (attacker.type == UnitType.Settler)
+                return new AttackUnitResult(false, AttackUnitFailReason.IsSettler, false, false, null);
+
+            if (!GetReachableTiles(attacker).Contains(defender.Position))
+                return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, null);
+
+            PathResult pathRes = Pathfinding.FindPath(attacker.Position, defender.Position,
+                hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
+            if (!pathRes.Found)
+                return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, null);
+
+            defender.Hp -= Math.Max(1, attacker.Atk - defender.Def);
+            if (defender.type != UnitType.Settler)
+                attacker.Hp -= Math.Max(1, defender.Atk - attacker.Def);
+            bool attackerIsDead = attacker.Hp <= 0;
+            bool defenderIsDead = defender.Hp <= 0;
+            if (defenderIsDead)
+            {
+                Units.Remove(defender);
+                attacker.Position = defender.Position;
+            }
+            else if(pathRes.Path.Count >= 2)
+            {
+                attacker.Position = pathRes.Path[pathRes.Path.Count - 2];
+            }
+            if (attackerIsDead)
+            {
+                Units.Remove(attacker);
+            }
+            attacker.MovementLeft = 0;
+
+            return new AttackUnitResult(true, AttackUnitFailReason.Success, attackerIsDead, defenderIsDead, pathRes.Path);
         }
     }
 }

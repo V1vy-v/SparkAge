@@ -145,3 +145,34 @@
 - 城市碰撞只算中心格（领地=视觉范围，不该挡通行/落位，除非 W4 做 ZOC）。
 - 现状缺口：BuildUnit 只扣产出建 Unit 对象，未选出生格、未加入 Units；需补 BFS 定位 + 落位。
 - 帮助方法可复用 FindSpawnPoint 的 BFS 模式。
+## 问答记录：攻击判断放控制层还是数据层（2026-09-04）
+- 结论：规则校验一律放数据层（与移动/建城一致）："能否攻击"取决于世界数据（射程/敌我/回合/是否已行动），Controller 不拥有数据，无法正确判断；联机时主机用 Core 校验，客户端不得自行裁定。
+- 分层：数据层提供 查询 CanAttack(attacker,target)（UI 灰置用，只读） + 执行 TryAttack/Execute(AttackOrder)（校验+改状态+返回事件）；Controller 只做 输入→Order、结果→表现；"UI 处于什么模式/是否选中单位"才是表现层 UI 状态。
+- 原因回顾：移动/建城判断在 GameState 正是"规则=Model 职责"的正确体现，攻击保持同模式。
+## 问答记录：近战攻击是否拆成 MoveUnit+AttackUnit（2026-09-04）
+- 结论：方向对但要分层——数据层攻击是"一个原子动作"（TryAttack/AttackOrder 一次校验+结算，返回 是否击杀/攻击者最终落点/目标移除/行动力消耗），不要把移动与攻击拆成两次数据调用（中间态+联机不一致）。
+- "是否挺进目标格"由攻击结果决定并在数据层改好（击杀→Position=目标格），Controller 只按结果编排动画：走位→攻击→（击杀则）挺进，动画段用回调衔接。
+- 若近战只打相邻：没有走位段，直接攻击结算。移动+攻击（打相邻需先走位）的寻路/移动力校验也在 Core。
+- 一句话：判定在 Core 一次完成，动画在 Controller 分段播放。
+## 问答记录：FindPath 路径不含起点 + 攻击越界崩溃（2026-09-05）
+- 约定：Pathfinding 返回路径不含起点（含起点之后直到 goal 的所有格）。相邻攻击时 path.Count==1。
+- 崩溃根因：GameState.AttackUnit 的 else 分支 `path[Count-2]`，相邻攻击 path[-1] 越界。
+- 修复：defender 未死且 Count>1 才移动到 path[Count-2]（目标相邻格）；Count==1 原地不动。
+## 问答记录：单位颜色区分与联机一致性（2026-09-05，仅了解）
+- 颜色不进网络同步数据：同步 owner(玩家Id)，各端用同一张 owner→颜色 映射本地渲染 → 同一单位任何客户端颜色一致。
+- 敌我判断 = `unit.own == myPlayerId`（本地知道自己是几号玩家），颜色只是辅助；两种配色哲学：A 阵营固定色（同一单位跨端同色，推荐 demo）/ B 自己绿敌红（跨端颜色不同，回放/观战乱）。
+- 两个维度分开：形状=单位类型（勇士/移民），颜色=阵营(owner)。现状 UnitView 按 type 染红/蓝是"类型色"，敌我无法从颜色区分。
+- 实现：每 owner 共享材质实例或 MaterialPropertyBlock；PlayerState.PlayerColor 用了 UnityEngine.Color，在 Model 层违背零 UnityEngine，应改存颜色索引/表现层建表。
+## 问答记录：仅边缘/脚下颜色区分敌我（2026-09-05）
+- 推荐方案A（文明式脚下彩色环）：主体保持中性色，单位脚下加一个扁平彩色圆环（子物体，随单位移动），颜色=GetOwnerColor(owner)；每 owner 一个共享材质或 MaterialPropertyBlock，避免每单位实例化材质。
+- 备选方案B（模型自身边缘染色）：URP 自定义 shader/ShaderGraph 做 Fresnel rim 边缘光，_RimColor 按 owner 用 MaterialPropertyBlock 设置，主体保持中性。
+- 单位类型区分继续用形状/大小，颜色只表阵营。22. **视觉语言定案（W4a）**：颜色=玩家归属，标识=实体信息。
+    - 玩家色表放 View（Model 不存 Color）：owner1=红、owner2=蓝（占位可调）。
+    - 每个单位/城市 GameObject 挂一个"头顶标识"子物体（小圆环/菱形，水平朝上，y 抬高），**跟随移动**（child 自动跟随）；标识颜色=玩家色。
+    - 单位本体改中性色，类型用大小/形态区分（战士大、移民小——scale 已有）；城市本体保持灰。
+    - 标识的"信息内容"（HP/类型/城市名）用 TextMeshPro 世界标签，放 UI 批次挂到标识下；现在先做归属色结构。
+
+## 问答记录：Marker 做成预制体，代码只改颜色（2026-09-05）
+- 做法：Prefabs/OwnerMarker.prefab（Plane/圆盘，法线朝上天然水平；去碰撞体，尺寸在预制体内调好）。
+- 代码只做：Instantiate(prefab, host) 子物体挂载 + 设 localPosition(头顶) + 按 owner 换共享材质（per-owner 材质数组 or MaterialPropertyBlock），避免每单位实例化。
+- 颜色表留 View；单位/城市生成时 AttachOwnerMarker(host, owner)。23. **战斗模型定案（W4a）**：攻击 = 目标在本回合可达即攻（移动+攻击合并），消耗全部移动力（MovementLeft=0）；双方结算：攻方伤害 max(1, 攻Atk−守Def)；**守方 Atk>0 才反击**，伤害 max(1, 守Atk−攻Def)；守方死亡→攻方进格，攻方死亡→移除；攻方若活着未杀→停在目标相邻格。单位属性统一 GameRules：战士 3/2/10/移2，移民 0/0/1/移3。

@@ -39,5 +39,15 @@ namespace SparkAge.Framework.EventCenter
                 ConsumedSettler = settler;
             }
         }
+        public class AttackUnitEvent
+        {
+            public Unit Attacker;
+            public bool AttackerIsDead;
+            public AttackUnitEvent(Unit attacker, bool attackerIsDead)
+            {
+                Attacker = attacker;
+                AttackerIsDead = attackerIsDead;
+            }
+        }
     }
 }

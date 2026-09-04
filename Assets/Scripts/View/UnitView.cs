@@ -1,6 +1,7 @@
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
+using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections;
@@ -15,8 +16,8 @@ namespace SparkAge.View
     /// </summary>
     public class UnitView : MonoBehaviour
     {
-        [SerializeField] Material warriorMaterial;
-        [SerializeField] Material settlerMaterial;
+        //[SerializeField] Material warriorMaterial;
+        //[SerializeField] Material settlerMaterial;
 
         //外部提供字段
         GameState state;
@@ -31,14 +32,14 @@ namespace SparkAge.View
             this.state = state;
             this.hexSize = hexSize;
 
-            warriorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-            {
-                color = Color.red
-            };
-            settlerMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-            {
-                color = Color.blue
-            };
+            //warriorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            //{
+            //    color = Color.red
+            //};
+            //settlerMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            //{
+            //    color = Color.blue
+            //};
         }
 
         private void Start()
@@ -62,17 +63,25 @@ namespace SparkAge.View
         /// </summary>
         public GameObject BuildUnit(Unit unit)
         {
-            GameObject unitObj = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            GameObject unitObj = null;
 
             switch (unit.type)
             {
                 case UnitType.Warrior:
-                    unitObj.GetComponent<MeshRenderer>().material = warriorMaterial;
-                    unitObj.transform.localScale = Vector3.one * 0.5f;
+                    unitObj = Instantiate(Resources.Load<GameObject>("Prefabs/Warrior"));
+                    unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material = 
+                        new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                    {
+                        color = ViewTools.GetPlayerColor(unit.own)
+                    };
                     break;
                 case UnitType.Settler:
-                    unitObj.GetComponent<MeshRenderer>().material = settlerMaterial;
-                    unitObj.transform.localScale = Vector3.one * 0.3f;
+                    unitObj = Instantiate(Resources.Load<GameObject>("Prefabs/Settler"));
+                    unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material = 
+                        new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                    {
+                        color = ViewTools.GetPlayerColor(unit.own)
+                    };
                     break;
             }
 
@@ -117,6 +126,40 @@ namespace SparkAge.View
             }
             //发布单位移动事件
             EventCenter.Instance.EventTrigger<UnitMoveEvent>(new UnitMoveEvent(unit, path, false));
+        }
+        public void AttackUnit(Unit attacker, Unit defender, bool attackerIsDead,bool defenderIsDead,List<HexCoord> path)
+        {
+            StartCoroutine(MoveAndAttackSequence(attacker, defender, attackerIsDead, defenderIsDead, path));
+        }
+
+        /// <summary>
+        /// 单位攻击协程，移动+攻击动画
+        /// </summary>
+        /// <param name="obj"></param>
+        /// <param name="path"></param>
+        /// <returns></returns>
+        IEnumerator MoveAndAttackSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
+        {
+            //靠近目标单位
+            for (int i = 0; i <= path.Count - 2; i++) 
+            {
+                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
+                yield return moveDeltaTime;
+            }
+            //停顿两秒暂且当做攻击动画
+            yield return new WaitForSeconds(2f);
+
+            if (!attackerIsDead && defenderIsDead)
+                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
+            if (attackerIsDead)
+                DestroyUnit(attacker);
+            if (defenderIsDead)
+                DestroyUnit(defender);
+
+            Debug.Log("战斗结果：\n攻方：" + (attackerIsDead ? "死亡" : "存活") + "；守方：" + (defenderIsDead ? "死亡" : "存活"));
+
+            //发布单位攻击完成事件
+            EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, attackerIsDead));
         }
     }
 }
