@@ -11,12 +11,12 @@ namespace SparkAge.Model.Units
         Settler
     }
     /// <summary>
-    /// 单位数据
+    /// 单位类
     /// </summary>
     public class Unit
     {
-        public int own;//所属玩家
-        public UnitType type;//单位类型
+        public int Owner;//所属玩家
+        public UnitType Type;//单位类型
         public HexCoord Position;//位置
 
         public int Atk;//攻击力
@@ -28,9 +28,9 @@ namespace SparkAge.Model.Units
 
         public Unit(int own, UnitType type, HexCoord position)
         {
-            this.type = type;
+            this.Type = type;
             Position = position;
-            this.own = own;
+            this.Owner = own;
             switch (type)
             {
                 case UnitType.Warrior:

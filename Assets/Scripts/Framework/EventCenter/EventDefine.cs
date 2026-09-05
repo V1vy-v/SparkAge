@@ -49,5 +49,19 @@ namespace SparkAge.Framework.EventCenter
                 AttackerIsDead = attackerIsDead;
             }
         }
+        public class AttackCityEvent
+        {
+            public Unit Attacker;
+            public City AttackedCity;
+            public bool CityIsCapture;
+            public bool DefenderIsDead;
+            public AttackCityEvent(Unit attacker, City city, bool cityIsCapture,bool defenderIsDead)
+            {
+                Attacker= attacker;
+                AttackedCity = city;
+                CityIsCapture = cityIsCapture;
+                DefenderIsDead = defenderIsDead;
+            }
+        }
     }
 }

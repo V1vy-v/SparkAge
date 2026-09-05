@@ -35,6 +35,14 @@ namespace SparkAge.View
             {
                 BuildCity(e.City);
             });
+            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
+            {
+                if (e.CityIsCapture)
+                {
+                    //更新城市边界和标识颜色
+                    UpadateCityColor(e.AttackedCity);
+                }
+            });
         }
 
         /// <summary>
@@ -49,10 +57,32 @@ namespace SparkAge.View
             {
                 color = ViewTools.GetPlayerColor(city.Owner)
             };
+            obj.transform.position = HexLayout.HexToPixel(city.Position, hexSize, 0.3f);
+
+            //创建城市边界对象
 
             cityObjs[city] = obj;
-            obj.transform.position = HexLayout.HexToPixel(city.Position, hexSize, 0.3f);
             return obj;
+        }
+        public void DestroyCity(City city)
+        {
+            //销毁城市及边界对象
+
+        }
+        /// <summary>
+        /// 更新城市颜色
+        /// </summary>
+        /// <param name="city"></param>
+        public void UpadateCityColor(City city)
+        {
+            cityObjs[city].transform.Find("Marker").GetComponent<MeshRenderer>().material =
+                new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = ViewTools.GetPlayerColor(city.Owner)
+                };
+
+            //更新城市边界对象
+
         }
     }
 }

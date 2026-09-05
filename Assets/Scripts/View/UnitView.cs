@@ -65,14 +65,14 @@ namespace SparkAge.View
         {
             GameObject unitObj = null;
 
-            switch (unit.type)
+            switch (unit.Type)
             {
                 case UnitType.Warrior:
                     unitObj = Instantiate(Resources.Load<GameObject>("Prefabs/Warrior"));
                     unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material = 
                         new Material(Shader.Find("Universal Render Pipeline/Lit"))
                     {
-                        color = ViewTools.GetPlayerColor(unit.own)
+                        color = ViewTools.GetPlayerColor(unit.Owner)
                     };
                     break;
                 case UnitType.Settler:
@@ -80,7 +80,7 @@ namespace SparkAge.View
                     unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material = 
                         new Material(Shader.Find("Universal Render Pipeline/Lit"))
                     {
-                        color = ViewTools.GetPlayerColor(unit.own)
+                        color = ViewTools.GetPlayerColor(unit.Owner)
                     };
                     break;
             }
@@ -129,16 +129,16 @@ namespace SparkAge.View
         }
         public void AttackUnit(Unit attacker, Unit defender, bool attackerIsDead,bool defenderIsDead,List<HexCoord> path)
         {
-            StartCoroutine(MoveAndAttackSequence(attacker, defender, attackerIsDead, defenderIsDead, path));
+            StartCoroutine(MoveAndAttackUnitSequence(attacker, defender, attackerIsDead, defenderIsDead, path));
         }
 
         /// <summary>
-        /// 单位攻击协程，移动+攻击动画
+        /// 攻击单位协程，移动+攻击动画
         /// </summary>
         /// <param name="obj"></param>
         /// <param name="path"></param>
         /// <returns></returns>
-        IEnumerator MoveAndAttackSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
+        IEnumerator MoveAndAttackUnitSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
         {
             //靠近目标单位
             for (int i = 0; i <= path.Count - 2; i++) 
@@ -158,8 +158,38 @@ namespace SparkAge.View
 
             Debug.Log("战斗结果：\n攻方：" + (attackerIsDead ? "死亡" : "存活") + "；守方：" + (defenderIsDead ? "死亡" : "存活"));
 
-            //发布单位攻击完成事件
+            //发布攻击单位完成事件
             EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, attackerIsDead));
+        }
+
+        //
+        public void AttackCity(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+        {
+            StartCoroutine(MoveAndAttackCitySequence(attacker, city, cityIsCaptured, path, defenderIsDead));
+        }
+        IEnumerator MoveAndAttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+        {
+            //靠近目标单位
+            for (int i = 0; i <= path.Count - 2; i++)
+            {
+                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
+                yield return moveDeltaTime;
+            }
+            //停顿两秒暂且当做攻击动画
+            yield return new WaitForSeconds(2f);
+
+            if (cityIsCaptured)
+            {
+                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
+            }
+            if (defenderIsDead)
+            {
+                //给守方玩家游戏失败的信息（主要是UI层）
+                Debug.Log("玩家" + city.Owner.ToString() + "失败");
+            }
+            Debug.Log("战斗结果：\n城市：" + (cityIsCaptured ? "被攻占" : "受到伤害"));
+            //发布攻击城市完成事件
+            EventCenter.Instance.EventTrigger<AttackCityEvent>(new AttackCityEvent(attacker, city, cityIsCaptured, defenderIsDead));
         }
     }
 }

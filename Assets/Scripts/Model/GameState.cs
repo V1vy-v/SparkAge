@@ -14,7 +14,7 @@ namespace SparkAge.Model
     public class GameState
     {
         public MapData Map;//地图数据
-        public List<PlayerState> Players;//所有玩家数据
+        public Dictionary<int, PlayerState> Players;//所有玩家数据
         public List<Unit> Units;//所有单位数据
         public List<City> Cities;//所有城市数据
         int turnNumber;//当前回合数
@@ -25,7 +25,7 @@ namespace SparkAge.Model
         public GameState(MapData map)
         {
             Map = map;
-            Players = new List<PlayerState>() { new PlayerState(1) };
+            Players = new Dictionary<int, PlayerState>() { [1] = new PlayerState(1), [2] = new PlayerState(2) };
             Units = new List<Unit>();
             Cities = new List<City>();
             turnNumber = 1;
@@ -38,9 +38,8 @@ namespace SparkAge.Model
         /// <returns></returns>
         private PlayerState GetPlayerState(int id)
         {
-            foreach(var state in Players) 
-                if(state.Id == id)
-                    return state;
+            if (Players.TryGetValue(id, out PlayerState player))
+                return player;
             return null;
         }
 
@@ -280,7 +279,7 @@ namespace SparkAge.Model
         /// <returns></returns>
         public FoundCityResult FoundCity(Unit settler)
         {
-            if (settler.type != UnitType.Settler)
+            if (settler.Type != UnitType.Settler)
                 return new FoundCityResult(false, FoundCityFailReason.NotSettler, null);
 
             if (!Map.Tiles[settler.Position].Walkable)
@@ -293,17 +292,16 @@ namespace SparkAge.Model
             if (GetCityAt(settler.Position) != null)
                 return new FoundCityResult(false, FoundCityFailReason.OccupiedByCity, null);
 
-            var ps = GetPlayerState(CurrentPlayer);
-            if (ps.CityNum >= GameRules.MaxCitiesPerPlayer)
-                return new FoundCityResult(false, FoundCityFailReason.Limited, null);
+            //if (ps.CityNum >= GameRules.MaxCitiesPerPlayer)
+            //    return new FoundCityResult(false, FoundCityFailReason.Limited, null);
 
             //单位注销
             Units.Remove(settler);
 
             //新建城市
-            City city = new City(settler.own, settler.Position, GameRules.InitialCityRadius);
+            City city = new City(settler.Owner, settler.Position);
             Cities.Add(city);
-            ps.CityNum++;
+            GetPlayerState(settler.Owner).CityNum++;
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);
         }
@@ -326,12 +324,18 @@ namespace SparkAge.Model
                 Path = path;
             }
         }
+        /// <summary>
+        /// 数据层：攻击单位
+        /// </summary>
+        /// <param name="attacker"></param>
+        /// <param name="defender"></param>
+        /// <returns></returns>
         public AttackUnitResult AttackUnit(Unit attacker, Unit defender)
         {
-            if (defender.own == attacker.own) 
+            if (defender.Owner == attacker.Owner) 
                 return new AttackUnitResult(false, AttackUnitFailReason.IsSameOwner, false, false, null);
 
-            if (attacker.type == UnitType.Settler)
+            if (attacker.Type == UnitType.Settler)
                 return new AttackUnitResult(false, AttackUnitFailReason.IsSettler, false, false, null);
 
             if (!GetReachableTiles(attacker).Contains(defender.Position))
@@ -343,7 +347,7 @@ namespace SparkAge.Model
                 return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, null);
 
             defender.Hp -= Math.Max(1, attacker.Atk - defender.Def);
-            if (defender.type != UnitType.Settler)
+            if (defender.Type != UnitType.Settler)
                 attacker.Hp -= Math.Max(1, defender.Atk - attacker.Def);
             bool attackerIsDead = attacker.Hp <= 0;
             bool defenderIsDead = defender.Hp <= 0;
@@ -363,6 +367,71 @@ namespace SparkAge.Model
             attacker.MovementLeft = 0;
 
             return new AttackUnitResult(true, AttackUnitFailReason.Success, attackerIsDead, defenderIsDead, pathRes.Path);
+        }
+
+
+        public enum AttackCityFailReason { Success, IsSameOwner, IsSettler, Unreachable }
+        public readonly struct AttackCityResult
+        {
+            public readonly bool Success;
+            public readonly AttackCityFailReason Reason;
+            public readonly bool CityIsCaptured;
+            public readonly List<HexCoord> Path;
+            public readonly bool DefenderIsDead;
+            public AttackCityResult(bool success, AttackCityFailReason reason, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+            {
+                Success = success;
+                Reason = reason;
+                CityIsCaptured = cityIsCaptured;
+                Path = path;
+                DefenderIsDead = defenderIsDead;
+            }
+        }
+        public AttackCityResult AttackCity(Unit attacker, City city)
+        {
+            if (city.Owner == attacker.Owner)
+                return new AttackCityResult(false, AttackCityFailReason.IsSameOwner,false, null, false);
+
+            if (attacker.Type == UnitType.Settler)
+                return new AttackCityResult(false, AttackCityFailReason.IsSettler, false, null, false);
+
+            if (!GetReachableTiles(attacker).Contains(city.Position))
+                return new AttackCityResult(false, AttackCityFailReason.Unreachable, false, null, false);
+
+            PathResult pathRes = Pathfinding.FindPath(attacker.Position, city.Position,
+                hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
+            if (!pathRes.Found)
+                return new AttackCityResult(false, AttackCityFailReason.Unreachable,false, null, false);
+
+            city.Hp -= Math.Max(1, attacker.Atk - city.Def);
+            bool cityIsDead = city.Hp <= 0;
+            bool defenderIsDead = false;
+            if (cityIsDead)
+            {
+                int oldOwner = city.Owner;
+                //更换城市所属与血量
+                city.Owner = attacker.Owner;
+                city.Hp = city.MaxHp;
+                //更新攻方单位位置
+                attacker.Position = city.Position;
+                //更新玩家状态
+                GetPlayerState(attacker.Owner).CityNum += 1;
+                PlayerState defender = GetPlayerState(oldOwner);
+                defender.CityNum -= 1;
+                //判断守方玩家是否失败
+                if(defender.CityNum <= 0)
+                {
+                    defenderIsDead = true;
+                    defender.IsAlive = false;
+                }
+            }
+            else if (pathRes.Path.Count >= 2)
+            {
+                attacker.Position = pathRes.Path[pathRes.Path.Count - 2];
+            }
+            attacker.MovementLeft = 0;
+
+            return new AttackCityResult(true, AttackCityFailReason.Success, cityIsDead, pathRes.Path, defenderIsDead);
         }
     }
 }

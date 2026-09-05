@@ -58,6 +58,11 @@ namespace SparkAge.View
             {
                 ClearSelection();
             });
+            EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
+            {
+                SelectUnit(e.unit);
+                ShowHighlight(e.unit.Position);
+            });
             EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
             {
                 if (!e.AttackerIsDead)
@@ -71,10 +76,10 @@ namespace SparkAge.View
                     ClearSelection();
                 }
             });
-            EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
+            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
-                SelectUnit(e.unit);
-                ShowHighlight(e.unit.Position);
+                SelectUnit(e.Attacker);
+                ShowHighlight(e.Attacker.Position);
             });
         }
 

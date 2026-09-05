@@ -52,9 +52,13 @@ namespace SparkAge.Controller
             //订阅事件
             EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
             {
-                isMoving = e.isMoving;
+                isMoving = false;
             });
             EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
+            {
+                isMoving = false;
+            });
+            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
                 isMoving = false;
             });
@@ -95,7 +99,7 @@ namespace SparkAge.Controller
         {
             if (isMoving) return;
 
-            if(Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.type == UnitType.Settler)
+            if(Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
             {
                 TryFoundCity(selectionView.SelectedUnit);
             }
@@ -130,10 +134,13 @@ namespace SparkAge.Controller
                 if (hex != null)
                 {
                     Unit tarUnit = state.GetUnitAt((HexCoord)hex);
-                    if (tarUnit == null)
+                    City tarCity = state.GetCityAt((HexCoord)hex);
+                    if (tarUnit == null && tarCity == null)
                         TryMoveUnit(selectionView.SelectedUnit, (HexCoord)hex);
-                    else
+                    else if (tarUnit != null)
                         TryAttackUnit(selectionView.SelectedUnit, tarUnit);
+                    else if (tarCity != null)
+                        TryAttackCity(selectionView.SelectedUnit, tarCity);
                 }
             }
         }
@@ -255,6 +262,31 @@ namespace SparkAge.Controller
             //调用攻击单位协程
             isMoving = true;
             unitView.AttackUnit(attacker, defender, result.AttackerIsDead, result.DefenderIsDead, result.Path);
+        }
+
+        public void TryAttackCity(Unit attacker, City city)
+        {
+            AttackCityResult result = state.AttackCity(attacker, city);
+            if (!result.Success)
+            {
+                switch (result.Reason)
+                {
+                    case AttackCityFailReason.IsSameOwner:
+                        Debug.Log("目标城市为己方单位，不可攻击");
+                        break;
+                    case AttackCityFailReason.IsSettler:
+                        Debug.Log("当前单位为移民，不可攻击");
+                        break;
+                    case AttackCityFailReason.Unreachable:
+                        Debug.Log("该地块不可到达");
+                        break;
+                }
+                return;
+            }
+
+            //调用攻击单位协程
+            isMoving = true;
+            unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path, result.DefenderIsDead);
         }
     }
 }
