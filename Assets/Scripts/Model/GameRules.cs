@@ -10,7 +10,7 @@ namespace SparkAge.Model
 
         public const int CityRadius = 2;//城市初始半径
         public const int CityProduction = 0;//城市初始生产力
-        public const int CityMaxHp = 30;//城市初始血量
+        public const int CityMaxHp = 5;//城市初始血量
         public const int CityDef = 5;//城市初始防御力
 
 

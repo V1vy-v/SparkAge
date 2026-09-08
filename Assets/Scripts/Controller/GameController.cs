@@ -135,7 +135,7 @@ namespace SparkAge.Controller
                 {
                     Unit tarUnit = state.GetUnitAt((HexCoord)hex);
                     City tarCity = state.GetCityAt((HexCoord)hex);
-                    if (tarUnit == null && tarCity == null)
+                    if (tarUnit == null && (tarCity == null || tarCity.Owner == selectionView.SelectedUnit.Owner))
                         TryMoveUnit(selectionView.SelectedUnit, (HexCoord)hex);
                     else if (tarUnit != null)
                         TryAttackUnit(selectionView.SelectedUnit, tarUnit);

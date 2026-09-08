@@ -36,7 +36,7 @@ namespace SparkAge.Model
         /// </summary>
         /// <param name="id"></param>
         /// <returns></returns>
-        private PlayerState GetPlayerState(int id)
+        private PlayerState TryGetPlayer(int id)
         {
             if (Players.TryGetValue(id, out PlayerState player))
                 return player;
@@ -86,6 +86,29 @@ namespace SparkAge.Model
             return null;
         }
         /// <summary>
+        /// 判断某个格子是否能经过
+        /// </summary>
+        /// <param name="hex"></param>
+        /// <param name="mover"></param>
+        /// <returns></returns>
+        public bool CanPass(HexCoord hex, Unit mover)
+            => Map.IsInMap(hex)
+            && Map.Tiles[hex].Walkable
+            && !(GetUnitAt(hex) is Unit u && u.Owner != mover.Owner)
+            && !(GetCityAt(hex) is City c && c.Owner != mover.Owner);
+        /// <summary>
+        /// 判断某个格子是否能驻留
+        /// </summary>
+        /// <param name="hex"></param>
+        /// <param name="mover"></param>
+        /// <returns></returns>
+        public bool CanStand(HexCoord hex, Unit mover)
+            => Map.IsInMap(hex)
+            && Map.Tiles[hex].Walkable
+            && GetUnitAt(hex) == null
+            && !(GetCityAt(hex) is City c && c.Owner != mover.Owner);
+
+        /// <summary>
         /// 查询周围出生格内可出生单位的格子
         /// </summary>
         /// <param name="center"></param>
@@ -95,7 +118,7 @@ namespace SparkAge.Model
             if (Map.Tiles[center].Walkable && GetUnitAt(center) == null)
                 return center;
 
-            for(int i = 0; i < 5; i++)
+            for(int i = 0; i < 6; i++)
             {
                 HexCoord point = center.Neighbor(i);
                 if (Map.Tiles[point].Walkable && GetUnitAt(point) == null)
@@ -105,7 +128,7 @@ namespace SparkAge.Model
         }
 
         /// <summary>
-        /// 根据单位位置和移动力使用扩散算法计算可到达点
+        /// 根据单位位置和移动力使用扩散算法计算可到达点：对接表现层
         /// </summary>
         /// <param name="unit"></param>
         /// <returns></returns>
@@ -123,7 +146,10 @@ namespace SparkAge.Model
                 for (int i = 0; i < 6; i++)
                 {
                     HexCoord newHex = curHex.Neighbor(i);
-                    if (!Map.IsInMap(newHex)) continue;
+
+                    //待修改：返回两个数组，分别代表可移动目标和可攻击目标
+                    if (!(Map.IsInMap(newHex) && Map.Tiles[newHex].Walkable)) continue;
+
                     int cost = Map.Tiles[newHex].MoveCost;
                     if (cost <= 0) continue;
                     int remaining = movementLeftDic[curHex] - cost;
@@ -222,11 +248,11 @@ namespace SparkAge.Model
             return new BuildUnitResult(true, BuildUnitFailReason.Success, unit);
         }
 
-        public enum MoveFailReason { Success, TileOccupied, Unreachable }
+        public enum MoveFailReason { Success, UnvaildPos, Unreachable, NoPath }
         public readonly struct MoveResult
         {
             public readonly bool Success;
-            public readonly MoveFailReason Reason;     // 枚举：Success / TileOccupied / Unreachable / NoPath
+            public readonly MoveFailReason Reason;     // 枚举：Success / UnvaildPos / Unreachable / NoPath
             public readonly List<HexCoord> Path;       // 成功时有效（不含起点）
             public MoveResult(bool success, MoveFailReason reason, List<HexCoord> path)
             {
@@ -243,15 +269,13 @@ namespace SparkAge.Model
         /// <returns></returns>
         public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
         {
-            if (!GetReachableTiles(unit).Contains(tarHex))
-                return new MoveResult(false, MoveFailReason.Unreachable, null);
-            if (GetUnitAt(tarHex) != null)
-                return new MoveResult(false, MoveFailReason.TileOccupied, null);
-
+            if(!CanStand(tarHex, unit))
+                return new MoveResult(false, MoveFailReason.UnvaildPos, null);
             PathResult pathRes = Pathfinding.FindPath(unit.Position, tarHex,
-                hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
-
+                hex => CanPass(hex, unit) ? Map.Tiles[hex].MoveCost : -1);
             if (!pathRes.Found)
+                return new MoveResult(false, MoveFailReason.NoPath, null);
+            if (pathRes.Cost > unit.MovementLeft) 
                 return new MoveResult(false, MoveFailReason.Unreachable, null);
 
             unit.MovementLeft -= pathRes.Cost;
@@ -289,7 +313,7 @@ namespace SparkAge.Model
                 if (u != settler && u.Position.Equals(settler.Position))
                     return new FoundCityResult(false, FoundCityFailReason.OccupiedByUnit, null);
 
-            if (GetCityAt(settler.Position) != null)
+            if (GetCityIn(settler.Position) != null)
                 return new FoundCityResult(false, FoundCityFailReason.OccupiedByCity, null);
 
             //if (ps.CityNum >= GameRules.MaxCitiesPerPlayer)
@@ -301,7 +325,7 @@ namespace SparkAge.Model
             //新建城市
             City city = new City(settler.Owner, settler.Position);
             Cities.Add(city);
-            GetPlayerState(settler.Owner).CityNum++;
+            TryGetPlayer(settler.Owner).CityNum++;
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);
         }
@@ -338,12 +362,9 @@ namespace SparkAge.Model
             if (attacker.Type == UnitType.Settler)
                 return new AttackUnitResult(false, AttackUnitFailReason.IsSettler, false, false, null);
 
-            if (!GetReachableTiles(attacker).Contains(defender.Position))
-                return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, null);
-
             PathResult pathRes = Pathfinding.FindPath(attacker.Position, defender.Position,
-                hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
-            if (!pathRes.Found)
+                hex =>(CanPass(hex, attacker) || hex.Equals(defender.Position)) ? Map.Tiles[hex].MoveCost : -1);
+            if (!pathRes.Found || pathRes.Cost > attacker.MovementLeft)
                 return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, null);
 
             defender.Hp -= Math.Max(1, attacker.Atk - defender.Def);
@@ -395,12 +416,9 @@ namespace SparkAge.Model
             if (attacker.Type == UnitType.Settler)
                 return new AttackCityResult(false, AttackCityFailReason.IsSettler, false, null, false);
 
-            if (!GetReachableTiles(attacker).Contains(city.Position))
-                return new AttackCityResult(false, AttackCityFailReason.Unreachable, false, null, false);
-
             PathResult pathRes = Pathfinding.FindPath(attacker.Position, city.Position,
-                hex => Map.IsInMap(hex) ? Map.Tiles[hex].MoveCost : -1);
-            if (!pathRes.Found)
+                hex => (CanPass(hex, attacker) || hex.Equals(city.Position)) ? Map.Tiles[hex].MoveCost : -1);
+            if (!pathRes.Found || pathRes.Cost > attacker.MovementLeft)
                 return new AttackCityResult(false, AttackCityFailReason.Unreachable,false, null, false);
 
             city.Hp -= Math.Max(1, attacker.Atk - city.Def);
@@ -415,8 +433,8 @@ namespace SparkAge.Model
                 //更新攻方单位位置
                 attacker.Position = city.Position;
                 //更新玩家状态
-                GetPlayerState(attacker.Owner).CityNum += 1;
-                PlayerState defender = GetPlayerState(oldOwner);
+                TryGetPlayer(attacker.Owner).CityNum += 1;
+                PlayerState defender = TryGetPlayer(oldOwner);
                 defender.CityNum -= 1;
                 //判断守方玩家是否失败
                 if(defender.CityNum <= 0)

@@ -54,13 +54,13 @@ namespace SparkAge.Model.Hex
                 {
                     HexCoord newHex = cur.Neighbor(i);
 
-                    //不可到达地块
                     int cost = moveCost(newHex);
+                    //不可到达地块
                     if (cost < 0) continue;
 
                     int newCost = g[cur] + cost;
                     if (g.TryGetValue(newHex, out int oldCost) && newCost >= oldCost)
-                        continue;  // 松弛：非改进跳过
+                        continue;
 
                     g[newHex] = newCost;
                     pq.Enqueue(newHex, newCost + newHex.DistanceTo(goal));
