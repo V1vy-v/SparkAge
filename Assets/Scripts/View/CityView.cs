@@ -1,7 +1,9 @@
+using SparkAge.Config;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
+using SparkAge.Model.GameInfos;
 using System.Collections.Generic;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
@@ -13,6 +15,7 @@ namespace SparkAge.View
         //外部提供字段
         GameState state;
         float hexSize;
+        List<CityCfg> cityCfgs;
 
         //独占字段
         Mesh cityMesh;
@@ -20,10 +23,11 @@ namespace SparkAge.View
         public Dictionary<City, GameObject> CityObjs => cityObjs;
 
 
-        public void Init(GameState state, float hexSize)
+        public void Init(GameState state, float hexSize, List<CityCfg> cityCfgs)
         {
             this.state = state;
             this.hexSize = hexSize;
+            this.cityCfgs = cityCfgs;
 
             cityMesh = HexMeshFactory.CreateHexMesh(0.7f * hexSize);
         }
@@ -50,7 +54,7 @@ namespace SparkAge.View
         /// </summary>
         public GameObject BuildCity(City city)
         {
-            GameObject obj = Instantiate(Resources.Load<GameObject>("Prefabs/City"));
+            GameObject obj = Instantiate(cityCfgs[0].Prefab);
 
             obj.transform.Find("Marker").GetComponent<MeshRenderer>().material =
                 new Material(Shader.Find("Universal Render Pipeline/Lit"))

@@ -8,13 +8,18 @@ using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
 using SparkAge.Model.Units;
 using SparkAge.View;
-using System.Collections.Generic;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
 using static SparkAge.Model.GameState;
 
 namespace SparkAge.Controller
 {
+    enum GamePhase
+    {
+        PlayerTurn, //等待玩家输入
+        Animating,  //动画中
+        GameOver    //玩家失败
+    }
     /// <summary>
     /// 游戏控制层
     /// </summary>
@@ -33,7 +38,8 @@ namespace SparkAge.Controller
         UnitView unitView;
         SelectionView selectionView;
         CityView cityView;
-        bool isMoving;
+        //控制器状态
+        GamePhase phase = GamePhase.PlayerTurn;
 
         private void Awake()
         {
@@ -46,28 +52,28 @@ namespace SparkAge.Controller
             mapView.Init(state, hexSize);
 
             unitView = gameObject.AddComponent<UnitView>();
-            unitView.Init(state, hexSize);
+            unitView.Init(state, hexSize, gameCfg.unitCfgs);
 
             selectionView = gameObject.AddComponent<SelectionView>();
             selectionView.Init(state, hexSize, mapView.HexMesh);
 
             cityView = gameObject.AddComponent<CityView>();
-            cityView.Init(state, hexSize);
+            cityView.Init(state, hexSize, gameCfg.cityCfgs);
         }
         private void Start()
         {
             //订阅事件
             EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
             {
-                isMoving = false;
+                phase = GamePhase.PlayerTurn;
             });
             EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
             {
-                isMoving = false;
+                phase = GamePhase.PlayerTurn;
             });
             EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
-                isMoving = false;
+                phase = GamePhase.PlayerTurn;
             });
 
             //构建地图
@@ -105,16 +111,67 @@ namespace SparkAge.Controller
 
         private void Update()
         {
-            if (isMoving) return;
+            switch (phase)
+            {
+                case GamePhase.PlayerTurn:
+                    HandlePlayerInput();
+                    break;
+                case GamePhase.Animating: 
+                    break;
+                case GamePhase.GameOver:
+                    return;
+            }
+        }
 
-            if(Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
+        /// <summary>
+        /// 初始配置表读取与注入
+        /// </summary>
+        private void InitGameInfo()
+        {
+            gameInfo = new GameInfo();
+            foreach(var cfg in gameCfg.unitCfgs)
+            {
+                gameInfo.UnitInfos[cfg.Type] = new UnitInfo(cfg.Type, cfg.Name, cfg.Atk, cfg.Def, cfg.Hp, cfg.Movement, cfg.Cost);
+            }
+            foreach (var cfg in gameCfg.cityCfgs)
+            {
+                gameInfo.CityInfos.Add(new CityInfo(cfg.Name, cfg.Hp, cfg.Def, cfg.Radius, cfg.Production));
+            }
+        }
+
+        /// <summary>
+        /// 获取点击处地块Hex
+        /// </summary>
+        /// <returns></returns>
+        public HexCoord? GetClickHex()
+        {
+            //能被射线检测即在地图内
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            Plane ground = new Plane(Vector3.up, Vector3.zero);
+            if (ground.Raycast(ray, out float dist))
+            {
+                HexCoord clickHex = HexLayout.PixelToHex(ray.GetPoint(dist), hexSize);
+
+                if (state.Map.IsInMap(clickHex))
+                    return clickHex;
+            }
+
+            //不在地图内，无高亮
+            return null;
+        }
+        /// <summary>
+        /// 玩家输入监听入口
+        /// </summary>
+        private void HandlePlayerInput()
+        {
+            if (Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
             {
                 TryFoundCity(selectionView.SelectedUnit);
             }
 
-            if(selectionView.SelectedCity != null)
+            if (selectionView.SelectedCity != null)
             {
-                //后期改为UI交互
+                //待修改为UI交互
                 if (Input.GetKeyDown(KeyCode.Alpha1))
                 {
                     TryBuildUnit(selectionView.SelectedCity, UnitType.Settler);
@@ -154,48 +211,10 @@ namespace SparkAge.Controller
         }
 
         /// <summary>
-        /// 初始配置表读取与注入
-        /// </summary>
-        private void InitGameInfo()
-        {
-            gameInfo = new GameInfo();
-            foreach(var cfg in gameCfg.unitCfgs)
-            {
-                gameInfo.UnitInfos[cfg.Type] = new UnitInfo(cfg.Type, cfg.Name, cfg.Atk, cfg.Def, cfg.Hp, cfg.Movement, cfg.Cost);
-            }
-            foreach (var cfg in gameCfg.cityCfgs)
-            {
-                gameInfo.CityInfos.Add(new CityInfo(cfg.Name, cfg.Def, cfg.Hp, cfg.Radius, cfg.Production));
-            }
-        }
-
-        /// <summary>
-        /// 获取点击处地块Hex
-        /// </summary>
-        /// <returns></returns>
-        public HexCoord? GetClickHex()
-        {
-            //能被射线检测即在地图内
-            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-            Plane ground = new Plane(Vector3.up, Vector3.zero);
-            if (ground.Raycast(ray, out float dist))
-            {
-                HexCoord clickHex = HexLayout.PixelToHex(ray.GetPoint(dist), hexSize);
-
-                if (state.Map.IsInMap(clickHex))
-                    return clickHex;
-            }
-
-            //不在地图内，无高亮
-            return null;
-        }
-        /// <summary>
         /// 接收单位数据和移动路线并驱动单位移动动画
         /// </summary>
         /// <param name="unit"></param>
         /// <param name="tarHex"></param>
-        /// <param name="callback1"></param>
-        /// <param name="callback2"></param>
         public void TryMoveUnit(Unit unit, HexCoord tarHex)
         {
             MoveResult result = state.MoveUnit(unit, tarHex);
@@ -216,7 +235,7 @@ namespace SparkAge.Controller
                 return;
             }
 
-            isMoving = true;
+            phase = GamePhase.Animating;
             //发布单位移动事件
             unitView.MoveUnit(unit, result.Path);
         }
@@ -295,7 +314,7 @@ namespace SparkAge.Controller
             }
 
             //调用攻击单位协程
-            isMoving = true;
+            phase = GamePhase.Animating;
             unitView.AttackUnit(attacker, defender, result.AttackerIsDead, result.DefenderIsDead, result.Path);
         }
 
@@ -320,7 +339,7 @@ namespace SparkAge.Controller
             }
 
             //调用攻击单位协程
-            isMoving = true;
+            phase = GamePhase.Animating;
             unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path, result.DefenderIsDead);
         }
     }

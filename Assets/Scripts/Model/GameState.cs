@@ -15,7 +15,10 @@ namespace SparkAge.Model
     /// </summary>
     public class GameState
     {
-        public GameInfo GameInfo;//可配置数据
+        GameInfo gameInfo;//配置数据
+        public UnitInfo GetUnit(UnitType type) => gameInfo.UnitInfos[type];//单位配置访问器
+        public CityInfo GetCity(int i) => gameInfo.CityInfos[i];//城市配置访问器
+
         public MapData Map;//地图数据
         public Dictionary<int, PlayerState> Players;//所有玩家数据
         public List<Unit> Units;//所有单位数据
@@ -27,8 +30,9 @@ namespace SparkAge.Model
 
         public GameState(MapData map, GameInfo gameInfo)
         {
+            this.gameInfo = gameInfo;
+
             Map = map;
-            GameInfo = gameInfo;
             Players = new Dictionary<int, PlayerState>() { [1] = new PlayerState(1), [2] = new PlayerState(2) };
             Units = new List<Unit>();
             Cities = new List<City>();
@@ -253,7 +257,7 @@ namespace SparkAge.Model
         /// <returns></returns>
         public BuildUnitResult BuildUnit(City city, UnitType type)
         {
-            int production = (type == UnitType.Warrior) ? GameRules.WarriorCost : GameRules.SettlerCost;
+            int production = (type == UnitType.Warrior) ? GetUnit(UnitType.Warrior).Cost : GetUnit(UnitType.Settler).Cost;
             if (city.Production < production)
                 return new BuildUnitResult(false, BuildUnitFailReason.NotEnoughProduction, null);
 
@@ -261,7 +265,7 @@ namespace SparkAge.Model
             if(spawnHex == null)
                 return new BuildUnitResult(false, BuildUnitFailReason.NoUnitSpawnNear, null);
 
-            Unit unit = new Unit(city.Owner,(HexCoord)spawnHex, GameInfo.UnitInfos[UnitType.Warrior]);
+            Unit unit = new Unit(city.Owner,(HexCoord)spawnHex, GetUnit(type));
             Units.Add(unit);
             city.Production -= production;
 
@@ -343,7 +347,7 @@ namespace SparkAge.Model
             Units.Remove(settler);
 
             //新建城市
-            City city = new City(settler.Owner, settler.Position, GameInfo.CityInfos[0]);
+            City city = new City(settler.Owner, settler.Position, GetCity(0));
             Cities.Add(city);
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);

@@ -1,7 +1,9 @@
+using SparkAge.Config;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
+using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections;
@@ -22,15 +24,17 @@ namespace SparkAge.View
         //外部提供字段
         GameState state;
         float hexSize;
+        List<UnitCfg> unitCfgs;
 
         //独占字段
         Dictionary<Unit, GameObject> unitObjs = new Dictionary<Unit, GameObject>();// 单位->游戏对象的映射
         public Dictionary<Unit, GameObject> UnitObjs => unitObjs;
 
-        public void Init(GameState state, float hexSize)
+        public void Init(GameState state, float hexSize, List<UnitCfg> unitCfgs)
         {
             this.state = state;
             this.hexSize = hexSize;
+            this.unitCfgs = unitCfgs;
 
             //warriorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
             //{
@@ -63,27 +67,16 @@ namespace SparkAge.View
         /// </summary>
         public GameObject BuildUnit(Unit unit)
         {
-            GameObject unitObj = null;
-
-            switch (unit.Type)
-            {
-                case UnitType.Warrior:
-                    unitObj = Instantiate(Resources.Load<GameObject>("Prefabs/Warrior"));
-                    unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material = 
-                        new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                    {
-                        color = ViewTools.GetPlayerColor(unit.Owner)
-                    };
-                    break;
-                case UnitType.Settler:
-                    unitObj = Instantiate(Resources.Load<GameObject>("Prefabs/Settler"));
-                    unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material = 
-                        new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                    {
-                        color = ViewTools.GetPlayerColor(unit.Owner)
-                    };
-                    break;
-            }
+            UnitCfg cfg = null;
+            foreach(var unitCfg in unitCfgs)
+                if(unitCfg.Type == unit.Type)
+                    cfg = unitCfg;
+            GameObject unitObj = Instantiate(cfg.Prefab);
+            unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material =
+                new Material(Shader.Find("Universal Render Pipeline/Lit"))
+                {
+                    color = ViewTools.GetPlayerColor(unit.Owner)
+                };
 
             unitObjs[unit] = unitObj;
             unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
@@ -99,6 +92,16 @@ namespace SparkAge.View
             unitObjs.Remove(unit);
         }
 
+        private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
+        IEnumerator WalkSteps(Unit unit, List<HexCoord> path, int endIdx)
+        {
+            for (int i = 0; i <= endIdx; i++)
+            {
+                unitObjs[unit].transform.position = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
+                yield return moveDeltaTime;
+            }
+        }
+
         /// <summary>
         /// 单位移动
         /// </summary>
@@ -106,30 +109,24 @@ namespace SparkAge.View
         /// <param name="tarHex"></param>
         public void MoveUnit(Unit unit, List<HexCoord> path)
         {
-            StartCoroutine(MoveSequence(unit, path));
+            StartCoroutine(MoveUnitSequence(unit, path));
         }
 
-        private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
         /// <summary>
         /// 单位移动协程，移动动画
         /// </summary>
         /// <param name="obj"></param>
         /// <param name="path"></param>
         /// <returns></returns>
-        IEnumerator MoveSequence(Unit unit, List<HexCoord> path)
+        IEnumerator MoveUnitSequence(Unit unit, List<HexCoord> path)
         {
-            yield return null;
-            foreach (HexCoord hex in path)
-            {
-                unitObjs[unit].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.5f);
-                yield return moveDeltaTime;
-            }
+            yield return StartCoroutine(WalkSteps(unit, path, path.Count - 1));
             //发布单位移动事件
             EventCenter.Instance.EventTrigger<UnitMoveEvent>(new UnitMoveEvent(unit, path, false));
         }
         public void AttackUnit(Unit attacker, Unit defender, bool attackerIsDead,bool defenderIsDead,List<HexCoord> path)
         {
-            StartCoroutine(MoveAndAttackUnitSequence(attacker, defender, attackerIsDead, defenderIsDead, path));
+            StartCoroutine(AttackUnitSequence(attacker, defender, attackerIsDead, defenderIsDead, path));
         }
 
         /// <summary>
@@ -138,16 +135,13 @@ namespace SparkAge.View
         /// <param name="obj"></param>
         /// <param name="path"></param>
         /// <returns></returns>
-        IEnumerator MoveAndAttackUnitSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
+        IEnumerator AttackUnitSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
         {
             //靠近目标单位
-            for (int i = 0; i <= path.Count - 2; i++) 
-            {
-                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
-                yield return moveDeltaTime;
-            }
-            //停顿两秒暂且当做攻击动画
-            yield return new WaitForSeconds(2f);
+            yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
+
+            //停顿1秒暂且当做攻击动画
+            yield return new WaitForSeconds(1f);
 
             if (!attackerIsDead && defenderIsDead)
                 unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
@@ -162,21 +156,24 @@ namespace SparkAge.View
             EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, attackerIsDead));
         }
 
-        //
+        /// <summary>
+        /// 攻击城市协程，移动+攻击动画
+        /// </summary>
+        /// <param name="attacker"></param>
+        /// <param name="city"></param>
+        /// <param name="cityIsCaptured"></param>
+        /// <param name="path"></param>
+        /// <param name="defenderIsDead"></param>
         public void AttackCity(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
         {
-            StartCoroutine(MoveAndAttackCitySequence(attacker, city, cityIsCaptured, path, defenderIsDead));
+            StartCoroutine(AttackCitySequence(attacker, city, cityIsCaptured, path, defenderIsDead));
         }
-        IEnumerator MoveAndAttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+        IEnumerator AttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
         {
             //靠近目标单位
-            for (int i = 0; i <= path.Count - 2; i++)
-            {
-                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
-                yield return moveDeltaTime;
-            }
-            //停顿两秒暂且当做攻击动画
-            yield return new WaitForSeconds(2f);
+            yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
+            //停顿1秒暂且当做攻击动画
+            yield return new WaitForSeconds(1f);
 
             if (cityIsCaptured)
             {

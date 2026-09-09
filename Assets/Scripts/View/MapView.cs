@@ -1,5 +1,6 @@
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
+using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
 using SparkAge.Model.Units;
@@ -16,6 +17,7 @@ namespace SparkAge.View
         [SerializeField] Material forestMaterial;
         [SerializeField] Material mountainMaterial;
         [SerializeField] Material waterMaterial;
+        [SerializeField] Transform mapRoot;
 
         //外部提供字段
         GameState state;
@@ -29,8 +31,10 @@ namespace SparkAge.View
         {
             this.state = state;
             this.hexSize = hexSize;
+
             hexMesh = HexMeshFactory.CreateHexMesh(hexSize);
             EnsureMaterials();
+            mapRoot = GameObject.Find("MapRoot").transform;
 
             //创建地图和高亮资源，范围对象
             BuildTiles();
@@ -88,6 +92,7 @@ namespace SparkAge.View
                 MeshRenderer mr = obj.AddComponent<MeshRenderer>();
                 mr.material = GetMaterial(tile.Type);
 
+                obj.transform.SetParent(mapRoot, false);
                 obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize, 0);
             }
         }

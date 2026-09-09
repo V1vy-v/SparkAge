@@ -2,6 +2,7 @@ using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
+using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections.Generic;
@@ -18,6 +19,7 @@ namespace SparkAge.View
         [SerializeField] Color highlightColor = new Color(1f, 1f, 0f, 0.5f);         // 高亮的黄色（半透明）
         [SerializeField] Color unitHighlightColor = new Color(1f, 0f, 0f, 0.8f);     // 红色（略微半透明，以便叠加）
         [SerializeField] Color reachableColor = new Color(0f, 0f, 0.6f, 0.7f);       // 深蓝色（半透明）
+        [SerializeField] Transform highlightRoot;
 
         //外部提供字段
         GameState state;
@@ -45,6 +47,8 @@ namespace SparkAge.View
             this.state = state;
             this.hexSize = hexSize;
             this.hexMesh = hexMesh;
+
+            highlightRoot = GameObject.Find("HighlightRoot").transform;
 
             unitHighlightMesh = HexMeshFactory.CreateHexMesh(0.8f * hexSize);
             reachableMesh = HexMeshFactory.CreateHexMesh(0.9f * hexSize);
@@ -99,6 +103,7 @@ namespace SparkAge.View
             {
                 color = highlightColor
             };
+            obj.transform.SetParent(highlightRoot, false);
             obj.SetActive(false);
 
             //单位选中框
@@ -110,6 +115,7 @@ namespace SparkAge.View
             {
                 color = unitHighlightColor
             };
+            obj.transform.SetParent(highlightRoot, false);
             obj.SetActive(false);
         }
         /// <summary>
@@ -136,6 +142,7 @@ namespace SparkAge.View
                 mf.mesh = reachableMesh;
                 mr = moveObj.AddComponent<MeshRenderer>();
                 mr.material = material1;
+                moveObj.transform.SetParent(highlightRoot, false);
                 moveObj.SetActive(false);
 
                 moveObjs.Add(moveObj);
@@ -147,6 +154,7 @@ namespace SparkAge.View
                 mf.mesh = reachableMesh;
                 mr = attackObj.AddComponent<MeshRenderer>();
                 mr.material = material2;
+                attackObj.transform.SetParent(highlightRoot, false);
                 attackObj.SetActive(false);
 
                 attackObjs.Add(attackObj);
