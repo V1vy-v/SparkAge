@@ -1,3 +1,4 @@
+using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 
 namespace SparkAge.Model.Units
@@ -7,8 +8,8 @@ namespace SparkAge.Model.Units
     /// </summary>
     public enum UnitType
     {
-        Warrior,
-        Settler
+        Settler = 1001,
+        Warrior = 1002
     }
     /// <summary>
     /// 单位类
@@ -26,26 +27,16 @@ namespace SparkAge.Model.Units
         public int MaxMovement;//最大移动力
         public int MovementLeft;//剩余移动力
 
-        public Unit(int own, UnitType type, HexCoord position)
+        public Unit(int own, HexCoord position, UnitInfo info)
         {
-            this.Type = type;
+            Owner = own;
             Position = position;
-            this.Owner = own;
-            switch (type)
-            {
-                case UnitType.Warrior:
-                    Atk = GameRules.WarriorAtk;
-                    Def = GameRules.WarriorDef;
-                    Hp = MaxHp = GameRules.WarriorMaxHp;
-                    MovementLeft = MaxMovement = GameRules.WarriorMaxMovement;
-                    break;
-                case UnitType.Settler:
-                    Atk = GameRules.SettlerAtk;
-                    Def = GameRules.SettlerDef;
-                    Hp = MaxHp = GameRules.SettlerMaxHp;
-                    MovementLeft = MaxMovement = GameRules.SettlerMaxMovement;
-                    break;
-            }
+            Type = info.Type;
+
+            Atk = info.Atk;
+            Def = info.Def;
+            Hp = MaxHp = info.Hp;
+            MovementLeft = MaxMovement = info.Movement;
         }
     }
 }

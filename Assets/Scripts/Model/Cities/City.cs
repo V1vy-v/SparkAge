@@ -1,3 +1,4 @@
+using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 
 namespace SparkAge.Model.Cities
@@ -16,14 +17,14 @@ namespace SparkAge.Model.Cities
         public int MaxHp;//血量上限
         public int Def;//防御力
 
-        public City(int owner, HexCoord position)
+        public City(int owner, HexCoord position, CityInfo info)
         {
             Owner = owner;
             Position = position;
-            Radius = GameRules.CityRadius;
-            Production = GameRules.CityProduction;
-            Hp = MaxHp = GameRules.CityMaxHp;
-            Def = GameRules.CityDef;
+            Radius = info.Radius;
+            Production = info.Production;
+            Hp = MaxHp = info.Hp;
+            Def = info.Def;
         }
     }
 }

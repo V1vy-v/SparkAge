@@ -29,11 +29,13 @@ namespace SparkAge.View
         Mesh reachableMesh;//单位可到达地块网格
         MeshRenderer highlight;//地块高亮渲染器
         MeshRenderer unitHighlight;//单位选中框渲染器
-        List<GameObject> reachableObjs = new List<GameObject>(128);//可移动范围对象
+        List<GameObject> moveObjs = new List<GameObject>(128);//可移动范围对象
+        List<GameObject> attackObjs = new List<GameObject>(32);//可攻击范围对象
 
         Unit selectedUnit;//当前选中的单位
         public Unit SelectedUnit => selectedUnit;//当前选中的单位：外部访问接口
-        List<HexCoord> reachableHex = new();//当前单位可移动范围
+        HashSet<HexCoord> moveHex = new();//当前单位可移动范围
+        HashSet<HexCoord> attackHex = new();//当前单位可移动范围
         City selectedCity;//当前选中的城市
         public City SelectedCity => selectedCity;//当前选中的单位：外部访问接口
 
@@ -48,7 +50,7 @@ namespace SparkAge.View
             reachableMesh = HexMeshFactory.CreateHexMesh(0.9f * hexSize);
 
             BuildHighlight();
-            BuildReachableObj();
+            BuildMoveAndAttackObjs();
         }
 
         private void Start()
@@ -111,28 +113,43 @@ namespace SparkAge.View
             obj.SetActive(false);
         }
         /// <summary>
-        /// 预创建64个移动范围对象
+        /// 预创建移动范围和攻击范围对象
         /// </summary>
         /// <param name="point"></param>
-        public void BuildReachableObj()
+        public void BuildMoveAndAttackObjs()
         {
-            GameObject reachableObj; 
+            GameObject moveObj, attackObj;
             MeshFilter mf; 
             MeshRenderer mr;
-            Material material = new Material(Shader.Find("Sprites/Default"))
+            Material material1 = new Material(Shader.Find("Sprites/Default"))
             {
                 color = reachableColor
             };
-            for (int i = 0; i < 64; i++)
+            Material material2 = new Material(Shader.Find("Sprites/Default"))
             {
-                reachableObj = new GameObject("reachableTile");
-                mf = reachableObj.AddComponent<MeshFilter>();
+                color = Color.red
+            };
+            for (int i = 0; i < 128; i++)
+            {
+                moveObj = new GameObject("moveTile");
+                mf = moveObj.AddComponent<MeshFilter>();
                 mf.mesh = reachableMesh;
-                mr = reachableObj.AddComponent<MeshRenderer>();
-                mr.material = material;
-                reachableObj.SetActive(false);
+                mr = moveObj.AddComponent<MeshRenderer>();
+                mr.material = material1;
+                moveObj.SetActive(false);
 
-                reachableObjs.Add(reachableObj);
+                moveObjs.Add(moveObj);
+            }
+            for (int i = 0; i < 128; i++)
+            {
+                attackObj = new GameObject("moveTile");
+                mf = attackObj.AddComponent<MeshFilter>();
+                mf.mesh = reachableMesh;
+                mr = attackObj.AddComponent<MeshRenderer>();
+                mr.material = material2;
+                attackObj.SetActive(false);
+
+                attackObjs.Add(attackObj);
             }
         }
 
@@ -203,10 +220,10 @@ namespace SparkAge.View
             unitHighlight.gameObject.SetActive(true);
 
             //计算可移动范围
-            reachableHex = state.GetReachableTiles(unit);
+            (moveHex, attackHex) = state.GetReachableTiles(unit);
 
-            //显示移动范围
-            ShowRange(reachableHex);
+            //显示移动和攻击范围
+            ShowRange();
 
             Debug.Log("当前单位剩余移动力：" + unit.MovementLeft);
         }
@@ -218,8 +235,10 @@ namespace SparkAge.View
             //隐藏选中框
             unitHighlight.gameObject.SetActive(false);
             //隐藏所有范围对象
-            for (int i = 0; i < reachableObjs.Count; i++)
-                reachableObjs[i].gameObject.SetActive(false);
+            for (int i = 0; i < moveObjs.Count; i++)
+                moveObjs[i].gameObject.SetActive(false);
+            for (int i = 0; i < attackObjs.Count; i++)
+                attackObjs[i].gameObject.SetActive(false);
             //清除选中对象
             selectedUnit = null;
         }
@@ -227,17 +246,27 @@ namespace SparkAge.View
         /// 刷新可到达范围：先隐藏再显示
         /// </summary>
         /// <param name="reachableHex"></param>
-        private void ShowRange(List<HexCoord> reachableHex)
+        private void ShowRange()
         {
             //隐藏所有范围对象
-            foreach (var obj in reachableObjs)
+            foreach (var obj in moveObjs)
                 obj.SetActive(false);
+            foreach (var obj in attackObjs)
+                obj.SetActive(false);
+
             //显示可到达范围对象
             int i = 0;
-            foreach (var hex in reachableHex)
+            foreach (var hex in moveHex)
             {
-                reachableObjs[i].SetActive(true);
-                reachableObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.04f);
+                moveObjs[i].SetActive(true);
+                moveObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.04f);
+                i++;
+            }
+            i = 0;
+            foreach (var hex in attackHex)
+            {
+                attackObjs[i].SetActive(true);
+                attackObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.04f);
                 i++;
             }
         }

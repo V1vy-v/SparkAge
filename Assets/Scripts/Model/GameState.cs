@@ -1,10 +1,12 @@
 using SparkAge.Model.Cities;
+using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
 using SparkAge.Model.Players;
 using SparkAge.Model.Units;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace SparkAge.Model
 {
@@ -13,6 +15,7 @@ namespace SparkAge.Model
     /// </summary>
     public class GameState
     {
+        public GameInfo GameInfo;//可配置数据
         public MapData Map;//地图数据
         public Dictionary<int, PlayerState> Players;//所有玩家数据
         public List<Unit> Units;//所有单位数据
@@ -22,9 +25,10 @@ namespace SparkAge.Model
         int currentPlayer;//当前可操作的玩家
         public int CurrentPlayer => currentPlayer;
 
-        public GameState(MapData map)
+        public GameState(MapData map, GameInfo gameInfo)
         {
             Map = map;
+            GameInfo = gameInfo;
             Players = new Dictionary<int, PlayerState>() { [1] = new PlayerState(1), [2] = new PlayerState(2) };
             Units = new List<Unit>();
             Cities = new List<City>();
@@ -43,6 +47,13 @@ namespace SparkAge.Model
             return null;
         }
 
+        /// <summary>
+        /// 查询某个玩家的城市数量
+        /// </summary>
+        /// <param name="owner"></param>
+        /// <returns></returns>
+        public int CityCount(int owner)
+            => Cities.Count(c => c.Owner == owner);
         /// <summary>
         /// 查询某个格子有没有单位
         /// </summary>
@@ -132,9 +143,12 @@ namespace SparkAge.Model
         /// </summary>
         /// <param name="unit"></param>
         /// <returns></returns>
-        public List<HexCoord> GetReachableTiles(Unit unit)
+        public (HashSet<HexCoord>, HashSet<HexCoord>) GetReachableTiles(Unit unit)
         {
             Dictionary<HexCoord, int> movementLeftDic = new Dictionary<HexCoord, int>();
+
+            HashSet<HexCoord> moveTiles = new HashSet<HexCoord>();
+            HashSet<HexCoord> attackTiles = new HashSet<HexCoord>();
 
             movementLeftDic[unit.Position] = unit.MovementLeft;
             Queue<HexCoord> queue = new();
@@ -146,22 +160,28 @@ namespace SparkAge.Model
                 for (int i = 0; i < 6; i++)
                 {
                     HexCoord newHex = curHex.Neighbor(i);
-
-                    //待修改：返回两个数组，分别代表可移动目标和可攻击目标
+                    //地形先不可达
                     if (!(Map.IsInMap(newHex) && Map.Tiles[newHex].Walkable)) continue;
-
-                    int cost = Map.Tiles[newHex].MoveCost;
-                    if (cost <= 0) continue;
-                    int remaining = movementLeftDic[curHex] - cost;
+                    //移动力不足
+                    int remaining = movementLeftDic[curHex] - Map.Tiles[newHex].MoveCost;
                     if (remaining < 0) continue;
+                    //可攻击地块：不可经过
+                    if(GetCityAt(newHex) is City c && c.Owner != unit.Owner ||
+                        GetUnitAt(newHex) is Unit u && u.Owner != unit.Owner)
+                    {
+                        attackTiles.Add(newHex);
+                        continue;
+                    }
+                    //可到达地块：包含友方单位
                     if (!movementLeftDic.TryGetValue(newHex, out int old) || remaining > old)
                     {
                         movementLeftDic[newHex] = remaining;
                         queue.Enqueue(newHex);
+                        moveTiles.Add(newHex);
                     }
                 }
             }
-            return new List<HexCoord>(movementLeftDic.Keys);
+            return (moveTiles, attackTiles);
         }
 
         /// <summary>
@@ -241,18 +261,18 @@ namespace SparkAge.Model
             if(spawnHex == null)
                 return new BuildUnitResult(false, BuildUnitFailReason.NoUnitSpawnNear, null);
 
-            Unit unit = new Unit(city.Owner, type, (HexCoord)spawnHex);
+            Unit unit = new Unit(city.Owner,(HexCoord)spawnHex, GameInfo.UnitInfos[UnitType.Warrior]);
             Units.Add(unit);
             city.Production -= production;
 
             return new BuildUnitResult(true, BuildUnitFailReason.Success, unit);
         }
 
-        public enum MoveFailReason { Success, UnvaildPos, Unreachable, NoPath }
+        public enum MoveFailReason { Success, InvaildPos, Unreachable, NoPath }
         public readonly struct MoveResult
         {
             public readonly bool Success;
-            public readonly MoveFailReason Reason;     // 枚举：Success / UnvaildPos / Unreachable / NoPath
+            public readonly MoveFailReason Reason;     // 枚举：Success / InvaildPos / Unreachable / NoPath
             public readonly List<HexCoord> Path;       // 成功时有效（不含起点）
             public MoveResult(bool success, MoveFailReason reason, List<HexCoord> path)
             {
@@ -270,7 +290,7 @@ namespace SparkAge.Model
         public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
         {
             if(!CanStand(tarHex, unit))
-                return new MoveResult(false, MoveFailReason.UnvaildPos, null);
+                return new MoveResult(false, MoveFailReason.InvaildPos, null);
             PathResult pathRes = Pathfinding.FindPath(unit.Position, tarHex,
                 hex => CanPass(hex, unit) ? Map.Tiles[hex].MoveCost : -1);
             if (!pathRes.Found)
@@ -323,9 +343,8 @@ namespace SparkAge.Model
             Units.Remove(settler);
 
             //新建城市
-            City city = new City(settler.Owner, settler.Position);
+            City city = new City(settler.Owner, settler.Position, GameInfo.CityInfos[0]);
             Cities.Add(city);
-            TryGetPlayer(settler.Owner).CityNum++;
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);
         }
@@ -433,11 +452,9 @@ namespace SparkAge.Model
                 //更新攻方单位位置
                 attacker.Position = city.Position;
                 //更新玩家状态
-                TryGetPlayer(attacker.Owner).CityNum += 1;
                 PlayerState defender = TryGetPlayer(oldOwner);
-                defender.CityNum -= 1;
                 //判断守方玩家是否失败
-                if(defender.CityNum <= 0)
+                if(CityCount(defender.Id) <= 0)
                 {
                     defenderIsDead = true;
                     defender.IsAlive = false;
