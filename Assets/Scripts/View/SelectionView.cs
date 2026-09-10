@@ -227,6 +227,9 @@ namespace SparkAge.View
             unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
             unitHighlight.gameObject.SetActive(true);
 
+            if (unit.Owner != state.CurrentPlayer)
+                return;
+
             //计算可移动范围
             (moveHex, attackHex) = state.GetReachableTiles(unit);
 

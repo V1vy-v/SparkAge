@@ -7,6 +7,8 @@ using SparkAge.Model.Units;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using static UnityEngine.GraphicsBuffer;
 
 namespace SparkAge.Model
 {
@@ -122,6 +124,30 @@ namespace SparkAge.Model
             && Map.Tiles[hex].Walkable
             && GetUnitAt(hex) == null
             && !(GetCityAt(hex) is City c && c.Owner != mover.Owner);
+        public HexCoord FindTarget(Unit attacker)
+        {
+            HexCoord res = attacker.Position;
+            int curDis = 9999;
+            foreach (Unit unit in Units)
+            {
+                int d = unit.Position.DistanceTo(attacker.Position);
+                if ( d < curDis && unit.Owner != attacker.Owner)
+                {
+                    res = unit.Position;
+                    curDis = d;
+                } 
+            }
+            foreach (City city in Cities)
+            {
+                int d = city.Position.DistanceTo(attacker.Position);
+                if (city.Position.DistanceTo(attacker.Position) < curDis && city.Owner != attacker.Owner)
+                {
+                    res = city.Position;
+                    curDis = d;
+                }
+            }
+            return res;
+        }
 
         /// <summary>
         /// 查询周围出生格内可出生单位的格子
@@ -218,25 +244,34 @@ namespace SparkAge.Model
         }
 
         /// <summary>
+        /// 数据层：玩家结束回合
+        /// </summary>
+        public void EndPhase()
+        {
+            currentPlayer++;
+            if(currentPlayer > Players.Count)
+                EndTurn();
+            return;
+        }
+        /// <summary>
         /// 数据层：回合结束
         /// </summary>
         public void EndTurn()
         {
-            //结算回合数
-            turnNumber++;
             //结算每个城市生产力变化
-            foreach (var City in Cities)
-                City.Production += GameRules.CityProductionPerTurn;
-
-            //添加UI面板变化
-
-
+            foreach (var city in Cities)
+                city.Production += GameRules.CityProductionPerTurn;
             //所有单位恢复移动力
             foreach (var unit in Units)
                 unit.MovementLeft = unit.MaxMovement;
+
+            //结算回合数
+            turnNumber++;
+            //重置当前玩家
+            currentPlayer = 1;
         }
 
-        public enum BuildUnitFailReason { Success, NotEnoughProduction, NoUnitSpawnNear }
+        public enum BuildUnitFailReason { Success, NoAccess, NotEnoughProduction, NoUnitSpawnNear }
         public readonly struct BuildUnitResult
         {
             public readonly bool Success;
@@ -257,6 +292,9 @@ namespace SparkAge.Model
         /// <returns></returns>
         public BuildUnitResult BuildUnit(City city, UnitType type)
         {
+            if (city.Owner != currentPlayer)
+                return new BuildUnitResult(false, BuildUnitFailReason.NoAccess, null);
+
             int production = (type == UnitType.Warrior) ? GetUnit(UnitType.Warrior).Cost : GetUnit(UnitType.Settler).Cost;
             if (city.Production < production)
                 return new BuildUnitResult(false, BuildUnitFailReason.NotEnoughProduction, null);
@@ -272,7 +310,7 @@ namespace SparkAge.Model
             return new BuildUnitResult(true, BuildUnitFailReason.Success, unit);
         }
 
-        public enum MoveFailReason { Success, InvaildPos, Unreachable, NoPath }
+        public enum MoveFailReason { Success, NoAccess, InvaildPos, Unreachable, NoPath }
         public readonly struct MoveResult
         {
             public readonly bool Success;
@@ -293,7 +331,9 @@ namespace SparkAge.Model
         /// <returns></returns>
         public MoveResult MoveUnit(Unit unit, HexCoord tarHex)
         {
-            if(!CanStand(tarHex, unit))
+            if (unit.Owner != currentPlayer) 
+                return new MoveResult(false, MoveFailReason.NoAccess, null);
+            if (!CanStand(tarHex, unit))
                 return new MoveResult(false, MoveFailReason.InvaildPos, null);
             PathResult pathRes = Pathfinding.FindPath(unit.Position, tarHex,
                 hex => CanPass(hex, unit) ? Map.Tiles[hex].MoveCost : -1);
@@ -307,7 +347,7 @@ namespace SparkAge.Model
             return new MoveResult(true, MoveFailReason.Success, pathRes.Path);
         }
 
-        public enum FoundCityFailReason { Success, NotSettler, Unbuildable, OccupiedByUnit, OccupiedByCity, Limited }
+        public enum FoundCityFailReason { Success, NoAccess, NotSettler, Unbuildable, OccupiedByUnit, OccupiedByCity, Limited }
         public readonly struct FoundCityResult
         {
             public readonly bool Success;
@@ -327,6 +367,9 @@ namespace SparkAge.Model
         /// <returns></returns>
         public FoundCityResult FoundCity(Unit settler)
         {
+            if (settler.Owner != currentPlayer) 
+                return new FoundCityResult(false, FoundCityFailReason.NoAccess, null);
+
             if (settler.Type != UnitType.Settler)
                 return new FoundCityResult(false, FoundCityFailReason.NotSettler, null);
 
@@ -354,7 +397,7 @@ namespace SparkAge.Model
         }
 
 
-        public enum AttackUnitFailReason { Success, IsSameOwner, IsSettler, Unreachable }
+        public enum AttackUnitFailReason { Success, NoAccess, IsSameOwner, IsSettler, Unreachable }
         public readonly struct AttackUnitResult
         {
             public readonly bool Success;
@@ -379,6 +422,8 @@ namespace SparkAge.Model
         /// <returns></returns>
         public AttackUnitResult AttackUnit(Unit attacker, Unit defender)
         {
+            if (attacker.Owner != currentPlayer) 
+                return new AttackUnitResult(false, AttackUnitFailReason.NoAccess, false, false, null);
             if (defender.Owner == attacker.Owner) 
                 return new AttackUnitResult(false, AttackUnitFailReason.IsSameOwner, false, false, null);
 
@@ -414,7 +459,7 @@ namespace SparkAge.Model
         }
 
 
-        public enum AttackCityFailReason { Success, IsSameOwner, IsSettler, Unreachable }
+        public enum AttackCityFailReason { Success, NoAccess, IsSameOwner, IsSettler, Unreachable }
         public readonly struct AttackCityResult
         {
             public readonly bool Success;
@@ -433,6 +478,9 @@ namespace SparkAge.Model
         }
         public AttackCityResult AttackCity(Unit attacker, City city)
         {
+            if (attacker.Owner != currentPlayer)
+                return new AttackCityResult(false, AttackCityFailReason.NoAccess, false, null, false);
+
             if (city.Owner == attacker.Owner)
                 return new AttackCityResult(false, AttackCityFailReason.IsSameOwner,false, null, false);
 

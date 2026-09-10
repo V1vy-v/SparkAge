@@ -6,18 +6,26 @@ using SparkAge.Model.Cities;
 using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
+using SparkAge.Model.Orders;
 using SparkAge.Model.Units;
 using SparkAge.View;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
 using static SparkAge.Model.GameState;
 
 namespace SparkAge.Controller
 {
-    enum GamePhase
+    public interface IOrderSink
+    {
+        public void SubmitOrder(BaseOrder order);
+    }
+    public enum GamePhase
     {
         PlayerTurn, //等待玩家输入
-        Animating,  //动画中
+        OtherPhase, //其他玩家操作中
+        AiPhase,     //Ai操作中
         GameOver    //玩家失败
     }
     /// <summary>
@@ -30,6 +38,8 @@ namespace SparkAge.Controller
         [SerializeField] GameCfg gameCfg;//游戏配置表
         [SerializeField] CameraController CameraController;//相机控制器
 
+        //控制层引用
+        AiOrders ai;
         //数据层引用
         GameState state;
         GameInfo gameInfo;
@@ -40,6 +50,12 @@ namespace SparkAge.Controller
         CityView cityView;
         //控制器状态
         GamePhase phase = GamePhase.PlayerTurn;
+        bool isBusy = false;
+        Dictionary<int, bool> playerIsAi = new()
+        {
+            [1] = false,
+            [2] = true
+        };
 
         private void Awake()
         {
@@ -59,21 +75,24 @@ namespace SparkAge.Controller
 
             cityView = gameObject.AddComponent<CityView>();
             cityView.Init(state, hexSize, gameCfg.cityCfgs);
+
+            ai = new AiOrders();
+            ai.Init(state);
         }
         private void Start()
         {
             //订阅事件
             EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
             {
-                phase = GamePhase.PlayerTurn;
+                isBusy = false;
             });
             EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
             {
-                phase = GamePhase.PlayerTurn;
+                isBusy = false;
             });
             EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
-                phase = GamePhase.PlayerTurn;
+                isBusy = false;
             });
 
             //构建地图
@@ -108,7 +127,6 @@ namespace SparkAge.Controller
             else
                 print("创建单位出生点失败！！！");
         }
-
         private void Update()
         {
             switch (phase)
@@ -116,7 +134,11 @@ namespace SparkAge.Controller
                 case GamePhase.PlayerTurn:
                     HandlePlayerInput();
                     break;
-                case GamePhase.Animating: 
+                //case GamePhase.Animating:
+                //    break;
+                case GamePhase.OtherPhase:
+                    break;
+                case GamePhase.AiPhase:
                     break;
                 case GamePhase.GameOver:
                     return;
@@ -129,7 +151,7 @@ namespace SparkAge.Controller
         private void InitGameInfo()
         {
             gameInfo = new GameInfo();
-            foreach(var cfg in gameCfg.unitCfgs)
+            foreach (var cfg in gameCfg.unitCfgs)
             {
                 gameInfo.UnitInfos[cfg.Type] = new UnitInfo(cfg.Type, cfg.Name, cfg.Atk, cfg.Def, cfg.Hp, cfg.Movement, cfg.Cost);
             }
@@ -164,35 +186,19 @@ namespace SparkAge.Controller
         /// </summary>
         private void HandlePlayerInput()
         {
-            if (Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
-            {
-                TryFoundCity(selectionView.SelectedUnit);
-            }
-
-            if (selectionView.SelectedCity != null)
-            {
-                //待修改为UI交互
-                if (Input.GetKeyDown(KeyCode.Alpha1))
-                {
-                    TryBuildUnit(selectionView.SelectedCity, UnitType.Settler);
-                }
-                else if (Input.GetKeyDown(KeyCode.Alpha2))
-                {
-                    TryBuildUnit(selectionView.SelectedCity, UnitType.Warrior);
-                }
-            }
-
+            //回合结束
             if (Input.GetKeyDown(KeyCode.Space))
             {
-                state.EndTurn();
+                SubmitOrder(new EndPhaseOrder(state.CurrentPlayer));
                 if (selectionView.SelectedUnit != null)
                     selectionView.SelectUnit(selectionView.SelectedUnit);
             }
-
+            //鼠标左键点击
             if (Input.GetMouseButtonDown(0))
             {
                 selectionView.HandleClick(GetClickHex());
             }
+            //鼠标右键点击
             if (Input.GetMouseButtonDown(1) && selectionView.SelectedUnit != null)
             {
                 HexCoord? hex = GetClickHex();
@@ -201,21 +207,83 @@ namespace SparkAge.Controller
                     Unit tarUnit = state.GetUnitAt((HexCoord)hex);
                     City tarCity = state.GetCityAt((HexCoord)hex);
                     if (tarUnit == null && (tarCity == null || tarCity.Owner == selectionView.SelectedUnit.Owner))
-                        TryMoveUnit(selectionView.SelectedUnit, (HexCoord)hex);
+                        SubmitOrder(new MoveUnitOrder(state.CurrentPlayer, selectionView.SelectedUnit, (HexCoord)hex));
                     else if (tarUnit != null)
-                        TryAttackUnit(selectionView.SelectedUnit, tarUnit);
+                        SubmitOrder(new AttackUnitOrder(state.CurrentPlayer, selectionView.SelectedUnit, tarUnit));
                     else if (tarCity != null)
-                        TryAttackCity(selectionView.SelectedUnit, tarCity);
+                        SubmitOrder(new AttackCityOrder(state.CurrentPlayer, selectionView.SelectedUnit, tarCity));
+                }
+            }
+            //F键建城
+            if (Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
+            {
+                SubmitOrder(new FoundCityOrder(state.CurrentPlayer, selectionView.SelectedUnit));
+            }
+            //1 2键造兵
+            if (selectionView.SelectedCity != null)
+            {
+                if (Input.GetKeyDown(KeyCode.Alpha1))
+                {
+                    SubmitOrder(new BuildUnitOrder(state.CurrentPlayer, selectionView.SelectedCity, UnitType.Settler));
+                }
+                else if (Input.GetKeyDown(KeyCode.Alpha2))
+                {
+                    SubmitOrder(new BuildUnitOrder(state.CurrentPlayer, selectionView.SelectedCity, UnitType.Warrior));
                 }
             }
         }
+        /// <summary>
+        /// 处理Ai决策
+        /// </summary>
+        private void HandleAiOrders()
+        {
+            ai.BeginAiPhase();
+            StartCoroutine(AiOrders());
+        }
+        IEnumerator AiOrders()
+        {
+            bool needWait;
+            BaseOrder order;
+            WaitUntil wu = new WaitUntil(() => !isBusy);
+            int i = 1;
+            while (true)
+            {
+                if (i++ >= 100)
+                {
+                    TryEndPhase();
+                    break;
+                }
+                order = ai.DecideOrders();
+                if (order == null) 
+                { 
+                    TryEndPhase(); 
+                    break; 
+                }
 
+                needWait = SubmitOrder(order);
+                if(needWait)
+                    yield return wu;
+                if (order is EndPhaseOrder)
+                    break;
+            }
+        }
+        public void TryEndPhase()
+        {
+            state.EndPhase();
+            if (playerIsAi[state.CurrentPlayer])
+            { 
+                phase = GamePhase.AiPhase;
+                HandleAiOrders();
+            }
+            else
+                phase = GamePhase.PlayerTurn;
+        }
         /// <summary>
         /// 接收单位数据和移动路线并驱动单位移动动画
         /// </summary>
         /// <param name="unit"></param>
         /// <param name="tarHex"></param>
-        public void TryMoveUnit(Unit unit, HexCoord tarHex)
+        public bool TryMoveUnit(Unit unit, HexCoord tarHex)
         {
             MoveResult result = state.MoveUnit(unit, tarHex);
             if (!result.Success)
@@ -232,18 +300,19 @@ namespace SparkAge.Controller
                         Debug.Log("该地块无可到达路径");
                         break;
                 }
-                return;
+                return false;
             }
 
-            phase = GamePhase.Animating;
+            isBusy = true;
             //发布单位移动事件
             unitView.MoveUnit(unit, result.Path);
+            return true;
         }
 
         public void TryFoundCity(Unit unit)
         {
             FoundCityResult result = state.FoundCity(unit);
-            if(!result.Success)
+            if (!result.Success)
             {
                 switch (result.Reason)
                 {
@@ -272,7 +341,7 @@ namespace SparkAge.Controller
         public void TryBuildUnit(City city, UnitType type)
         {
             //数据层
-            BuildUnitResult result =  state.BuildUnit(city, type);
+            BuildUnitResult result = state.BuildUnit(city, type);
             if (!result.Success)
             {
                 switch (result.Reason)
@@ -290,10 +359,9 @@ namespace SparkAge.Controller
             //表现层
             //发布造兵事件
             EventCenter.Instance.EventTrigger<BuildUnitEvent>(new BuildUnitEvent(city, result.Unit));
-
         }
 
-        public void TryAttackUnit(Unit attacker, Unit defender)
+        public bool TryAttackUnit(Unit attacker, Unit defender)
         {
             AttackUnitResult result = state.AttackUnit(attacker, defender);
             if (!result.Success)
@@ -310,15 +378,16 @@ namespace SparkAge.Controller
                         Debug.Log("该地块不可到达");
                         break;
                 }
-                return;
+                return false;
             }
 
             //调用攻击单位协程
-            phase = GamePhase.Animating;
+            isBusy = true;
             unitView.AttackUnit(attacker, defender, result.AttackerIsDead, result.DefenderIsDead, result.Path);
+            return true;
         }
 
-        public void TryAttackCity(Unit attacker, City city)
+        public bool TryAttackCity(Unit attacker, City city)
         {
             AttackCityResult result = state.AttackCity(attacker, city);
             if (!result.Success)
@@ -335,12 +404,38 @@ namespace SparkAge.Controller
                         Debug.Log("该地块不可到达");
                         break;
                 }
-                return;
+                return false;
             }
 
             //调用攻击单位协程
-            phase = GamePhase.Animating;
+            isBusy = true;
             unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path, result.DefenderIsDead);
+            return true;
+        }
+
+        public bool SubmitOrder(BaseOrder order)
+        {
+            switch (order)
+            {
+                case MoveUnitOrder o: 
+                    return TryMoveUnit(o.Unit, o.Target);
+                case AttackUnitOrder o: 
+                    return TryAttackUnit(o.Attacker, o.Defender);
+                case AttackCityOrder o: 
+                    return TryAttackCity(o.Attacker, o.City);
+                case FoundCityOrder o: 
+                    TryFoundCity(o.Unit);
+                    return false;
+                case BuildUnitOrder o: 
+                    TryBuildUnit(o.City, o.Type);
+                    return false;
+                case EndPhaseOrder o:
+                    TryEndPhase();
+                    return false;
+                default: 
+                    Debug.LogError($"未知命令类型：{order.GetType().Name}");
+                    return false;
+            }
         }
     }
 }

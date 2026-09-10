@@ -52,13 +52,11 @@ namespace SparkAge.View
             EventCenter.Instance.AddListener<FoundCityEvent>(e =>
             {
                 DestroyUnit(e.ConsumedSettler);
-                Debug.Log("城市已建立");
             });
             //订阅造兵事件
             EventCenter.Instance.AddListener<BuildUnitEvent>(e =>
             {
                 BuildUnit(e.BuiltUnit);
-                Debug.Log("单位已造好");
             });
         }
 

@@ -36,7 +36,8 @@ namespace SparkAge.Model.Units
             Atk = info.Atk;
             Def = info.Def;
             Hp = MaxHp = info.Hp;
-            MovementLeft = MaxMovement = info.Movement;
+            MaxMovement = info.Movement;
+            MovementLeft = 0;
         }
     }
 }
