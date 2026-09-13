@@ -122,9 +122,9 @@ namespace SparkAge.View
             //发布单位移动事件
             EventCenter.Instance.EventTrigger<UnitMoveEvent>(new UnitMoveEvent(unit, path, false));
         }
-        public void AttackUnit(Unit attacker, Unit defender, bool attackerIsDead,bool defenderIsDead,List<HexCoord> path)
+        public void AttackUnit(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, bool canEnter, List<HexCoord> path)
         {
-            StartCoroutine(AttackUnitSequence(attacker, defender, attackerIsDead, defenderIsDead, path));
+            StartCoroutine(AttackUnitSequence(attacker, defender, attackerIsDead, defenderIsDead, canEnter, path));
         }
 
         /// <summary>
@@ -133,7 +133,7 @@ namespace SparkAge.View
         /// <param name="obj"></param>
         /// <param name="path"></param>
         /// <returns></returns>
-        IEnumerator AttackUnitSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
+        IEnumerator AttackUnitSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, bool canEnter, List<HexCoord> path)
         {
             //靠近目标单位
             yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
@@ -141,7 +141,7 @@ namespace SparkAge.View
             //停顿1秒暂且当做攻击动画
             yield return new WaitForSeconds(1f);
 
-            if (!attackerIsDead && defenderIsDead)
+            if (!attackerIsDead && defenderIsDead && canEnter)
                 unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
             if (attackerIsDead)
                 DestroyUnit(attacker);

@@ -404,13 +404,15 @@ namespace SparkAge.Model
             public readonly AttackUnitFailReason Reason;
             public readonly bool AttackerIsDead;
             public readonly bool DefenderIsDead;
+            public readonly bool CanEnter;
             public readonly List<HexCoord> Path;
-            public AttackUnitResult(bool success, AttackUnitFailReason reason, bool attackerIsDead, bool defenderIsDead, List<HexCoord> path)
+            public AttackUnitResult(bool success, AttackUnitFailReason reason, bool attackerIsDead, bool defenderIsDead, bool canEnter, List<HexCoord> path)
             {
                 Success = success;
                 Reason = reason;
                 AttackerIsDead = attackerIsDead;
                 DefenderIsDead = defenderIsDead;
+                CanEnter = canEnter;
                 Path = path;
             }
         }
@@ -422,28 +424,33 @@ namespace SparkAge.Model
         /// <returns></returns>
         public AttackUnitResult AttackUnit(Unit attacker, Unit defender)
         {
+            HexCoord target = defender.Position;
             if (attacker.Owner != currentPlayer) 
-                return new AttackUnitResult(false, AttackUnitFailReason.NoAccess, false, false, null);
+                return new AttackUnitResult(false, AttackUnitFailReason.NoAccess, false, false, false, null);
             if (defender.Owner == attacker.Owner) 
-                return new AttackUnitResult(false, AttackUnitFailReason.IsSameOwner, false, false, null);
+                return new AttackUnitResult(false, AttackUnitFailReason.IsSameOwner, false, false, false, null);
 
             if (attacker.Type == UnitType.Settler)
-                return new AttackUnitResult(false, AttackUnitFailReason.IsSettler, false, false, null);
+                return new AttackUnitResult(false, AttackUnitFailReason.IsSettler, false, false, false, null);
 
-            PathResult pathRes = Pathfinding.FindPath(attacker.Position, defender.Position,
-                hex =>(CanPass(hex, attacker) || hex.Equals(defender.Position)) ? Map.Tiles[hex].MoveCost : -1);
+            PathResult pathRes = Pathfinding.FindPath(attacker.Position, target,
+                hex => ((hex.DistanceTo(target) > 1 && CanPass(hex, attacker)) ||
+                        (hex.DistanceTo(target) == 1 && CanStand(hex, attacker)) ||
+                        hex.Equals(target)) ? Map.Tiles[hex].MoveCost : -1);
             if (!pathRes.Found || pathRes.Cost > attacker.MovementLeft)
-                return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, null);
+                return new AttackUnitResult(false, AttackUnitFailReason.Unreachable, false, false, false, null);
 
             defender.Hp -= Math.Max(1, attacker.Atk - defender.Def);
             if (defender.Type != UnitType.Settler)
                 attacker.Hp -= Math.Max(1, defender.Atk - attacker.Def);
             bool attackerIsDead = attacker.Hp <= 0;
             bool defenderIsDead = defender.Hp <= 0;
-            if (defenderIsDead)
+            bool canEnter = false;
+            if (defenderIsDead && GetCityAt(target) == null)
             {
+                canEnter = true;
                 Units.Remove(defender);
-                attacker.Position = defender.Position;
+                attacker.Position = target;
             }
             else if(pathRes.Path.Count >= 2)
             {
@@ -455,7 +462,7 @@ namespace SparkAge.Model
             }
             attacker.MovementLeft = 0;
 
-            return new AttackUnitResult(true, AttackUnitFailReason.Success, attackerIsDead, defenderIsDead, pathRes.Path);
+            return new AttackUnitResult(true, AttackUnitFailReason.Success, attackerIsDead, defenderIsDead, canEnter, pathRes.Path);
         }
 
 
@@ -488,7 +495,9 @@ namespace SparkAge.Model
                 return new AttackCityResult(false, AttackCityFailReason.IsSettler, false, null, false);
 
             PathResult pathRes = Pathfinding.FindPath(attacker.Position, city.Position,
-                hex => (CanPass(hex, attacker) || hex.Equals(city.Position)) ? Map.Tiles[hex].MoveCost : -1);
+                hex => (hex.DistanceTo(city.Position) > 1 && CanPass(hex, attacker) ||
+                        hex.DistanceTo(city.Position) == 1 && CanStand(hex, attacker) ||
+                        hex.Equals(city.Position)) ? Map.Tiles[hex].MoveCost : -1);
             if (!pathRes.Found || pathRes.Cost > attacker.MovementLeft)
                 return new AttackCityResult(false, AttackCityFailReason.Unreachable,false, null, false);
 

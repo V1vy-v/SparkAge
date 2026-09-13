@@ -225,8 +225,8 @@ namespace SparkAge.Controller
             }
 
             //============= 鼠标输入 ==============
-            //UI输入锁定
-            if (UIManager.Instance.IsBlockingUI || UIManager.Instance.IsPointerOverUI)
+            //输入锁定：动画锁定+UI锁定
+            if (isBlockingInput && UIManager.Instance.IsBlockingUI || UIManager.Instance.IsPointerOverUI)
                 return;
 
             //鼠标左键点击
@@ -418,7 +418,7 @@ namespace SparkAge.Controller
 
             //调用攻击单位协程
             isBlockingInput = true;
-            unitView.AttackUnit(attacker, defender, result.AttackerIsDead, result.DefenderIsDead, result.Path);
+            unitView.AttackUnit(attacker, defender, result.AttackerIsDead, result.DefenderIsDead, result.CanEnter, result.Path);
             return true;
         }
 
@@ -450,6 +450,7 @@ namespace SparkAge.Controller
             unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path, result.DefenderIsDead);
             return true;
         }
+
         private void GameOver()
         {
             UIManager.Instance.ShowPanel<GameOverPanel>();
