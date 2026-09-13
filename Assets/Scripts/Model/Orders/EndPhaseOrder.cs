@@ -5,9 +5,9 @@ namespace SparkAge.Model.Orders
 {
     public class EndPhaseOrder : BaseOrder
     {
-        public EndPhaseOrder(int id)
+        public EndPhaseOrder()
         {
-            PlayerId = id;
+
         }
     }
 }

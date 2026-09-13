@@ -227,6 +227,8 @@ namespace SparkAge.View
             unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
             unitHighlight.gameObject.SetActive(true);
 
+            ClearaRange();
+
             if (unit.Owner != state.CurrentPlayer)
                 return;
 
@@ -245,26 +247,17 @@ namespace SparkAge.View
         {
             //隐藏选中框
             unitHighlight.gameObject.SetActive(false);
-            //隐藏所有范围对象
-            for (int i = 0; i < moveObjs.Count; i++)
-                moveObjs[i].gameObject.SetActive(false);
-            for (int i = 0; i < attackObjs.Count; i++)
-                attackObjs[i].gameObject.SetActive(false);
+            //清除移动范围
+            ClearaRange();
             //清除选中对象
             selectedUnit = null;
         }
         /// <summary>
-        /// 刷新可到达范围：先隐藏再显示
+        /// 显示可到达范围
         /// </summary>
         /// <param name="reachableHex"></param>
         private void ShowRange()
         {
-            //隐藏所有范围对象
-            foreach (var obj in moveObjs)
-                obj.SetActive(false);
-            foreach (var obj in attackObjs)
-                obj.SetActive(false);
-
             //显示可到达范围对象
             int i = 0;
             foreach (var hex in moveHex)
@@ -280,6 +273,16 @@ namespace SparkAge.View
                 attackObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.04f);
                 i++;
             }
+        }
+        /// <summary>
+        /// 隐藏所有范围对象
+        /// </summary>
+        private void ClearaRange()
+        {
+            foreach (var obj in moveObjs)
+                obj.SetActive(false);
+            foreach (var obj in attackObjs)
+                obj.SetActive(false);
         }
     }
 }

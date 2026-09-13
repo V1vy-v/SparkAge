@@ -7,8 +7,8 @@ using SparkAge.Model.Units;
 
 public class GameStateTests
 {
-    static Unit UnitAt(HexCoord pos, int movement) 
-        => new(0, pos, new UnitInfo(UnitType.Warrior, "Warrior", 4, 1, 10, 2, 5));
+    static Unit UnitAt(HexCoord pos) 
+        => new(0, pos, new UnitInfo(UnitType.Warrior, "Warrior", 4, 1, 10, 2, 5), 2);
 
     static GameState MakeMap(params (HexCoord c, TerrainType t)[] tiles)
     {
@@ -22,7 +22,7 @@ public class GameStateTests
     {
         var state = MakeMap();
         HexCoord start = new HexCoord(2, 2);
-        var res = state.GetReachableTiles(UnitAt(start, 2));
+        var res = state.GetReachableTiles(UnitAt(start));
         Assert.AreEqual(18, res.Item1.Count);
     }
 
@@ -30,7 +30,7 @@ public class GameStateTests
     public void Mountain_BlocksReach()
     {
         var state = MakeMap((new HexCoord(3, 2), TerrainType.Mountain));
-        var res = state.GetReachableTiles(UnitAt(new HexCoord(2, 2), 2));
+        var res = state.GetReachableTiles(UnitAt(new HexCoord(2, 2)));
         Assert.IsFalse(res.Item1.Contains(new HexCoord(3, 2)));   // 山本身不可达
         Assert.IsFalse(res.Item1.Contains(new HexCoord(4, 2)));   // 山后面也不可达
     }

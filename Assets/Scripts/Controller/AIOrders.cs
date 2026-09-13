@@ -87,6 +87,6 @@ public class AiOrders
             }
         }
         //结束ai回合
-        return new EndPhaseOrder(state.CurrentPlayer);
+        return new EndPhaseOrder();
     }
 }

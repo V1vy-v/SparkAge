@@ -1,5 +1,6 @@
 using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
+using System.Xml.Linq;
 
 namespace SparkAge.Model.Units
 {
@@ -20,6 +21,7 @@ namespace SparkAge.Model.Units
         public UnitType Type;//单位类型
         public HexCoord Position;//位置
 
+        public string Name;//名字
         public int Atk;//攻击力
         public int Def;//防御力
         public int Hp;//当前生命
@@ -27,17 +29,18 @@ namespace SparkAge.Model.Units
         public int MaxMovement;//最大移动力
         public int MovementLeft;//剩余移动力
 
-        public Unit(int own, HexCoord position, UnitInfo info)
+        public Unit(int own, HexCoord position, UnitInfo info, int bornMovement = 0)
         {
             Owner = own;
             Position = position;
             Type = info.Type;
 
+            Name= info.Name;
             Atk = info.Atk;
             Def = info.Def;
             Hp = MaxHp = info.Hp;
             MaxMovement = info.Movement;
-            MovementLeft = 0;
+            MovementLeft = bornMovement;
         }
     }
 }

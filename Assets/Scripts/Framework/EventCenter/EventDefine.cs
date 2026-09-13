@@ -64,5 +64,6 @@ namespace SparkAge.Framework.EventCenter
                 DefenderIsDead = defenderIsDead;
             }
         }
+
     }
 }
