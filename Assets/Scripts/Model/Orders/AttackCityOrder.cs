@@ -8,8 +8,9 @@ namespace SparkAge.Model.Orders
         public int AttackerID;
         public int CityID;
 
-        public AttackCityOrder(int attackerID, int cityID)
+        public AttackCityOrder(int id, int attackerID, int cityID)
         {
+            PlayerId = id;
             AttackerID = attackerID;
             CityID = cityID;
         }

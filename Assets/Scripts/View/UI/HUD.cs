@@ -19,7 +19,7 @@ namespace SparkAge.View.UI
 
             btnEndTurn.onClick.AddListener(() =>
             {
-                UIManager.Instance.Sink?.SubmitOrder(new EndPhaseOrder());
+                UIManager.Instance.Sink?.RequestEndPhase();
             });
         }
 

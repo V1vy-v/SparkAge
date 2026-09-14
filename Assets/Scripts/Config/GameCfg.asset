@@ -17,3 +17,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: a362a0c55ab19384abea74d1ca053f4f, type: 2}
   cityCfgs:
   - {fileID: 11400000, guid: de903e6f91d7df0428c4ab60c3bf9257, type: 2}
+  gameSetUpCfg: {fileID: 11400000, guid: bef48636e93474048b28d62c97bf279b, type: 2}

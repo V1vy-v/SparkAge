@@ -11,5 +11,7 @@ namespace SparkAge.Model.GameInfos
         public Dictionary<UnitType, UnitInfo> UnitInfos = new Dictionary<UnitType, UnitInfo>();
         //城市配置
         public List<CityInfo> CityInfos = new List<CityInfo>();
+        //局配置
+        public GameSetUpInfo GameSetUpInfo;
     }
 }

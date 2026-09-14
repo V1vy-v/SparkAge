@@ -29,7 +29,7 @@ public class AiOrders
             if (city.Owner == state.CurrentPlayer && !usedCities.Contains(city))
             {
                 usedCities.Add(city);
-                return new BuildUnitOrder(city.ID, UnitType.Warrior);
+                return new BuildUnitOrder(state.CurrentPlayer, city.ID, UnitType.Warrior);
             }
         }
 
@@ -39,7 +39,7 @@ public class AiOrders
             if (settler.Owner == state.CurrentPlayer && settler.Type == UnitType.Settler && !usedUnits.Contains(settler))
             {
                 usedUnits.Add(settler);
-                return new FoundCityOrder(settler.ID);
+                return new FoundCityOrder(state.CurrentPlayer, settler.ID);
             }  
         }
 
@@ -58,11 +58,11 @@ public class AiOrders
                 HexCoord tarHex = attackTiles.First();
                 if (state.GetUnitAt(tarHex) is Unit u)
                 {
-                    return new AttackUnitOrder(warrior.ID, u.ID);
+                    return new AttackUnitOrder(state.CurrentPlayer, warrior.ID, u.ID);
                 }
                 else if (state.GetCityAt(tarHex) is City c)
                 {
-                    return new AttackCityOrder(warrior.ID, c.ID);
+                    return new AttackCityOrder(state.CurrentPlayer, warrior.ID, c.ID);
                 }
             }
             else
@@ -83,10 +83,10 @@ public class AiOrders
                     }
                 }
                 if (tarHex == null) continue;
-                return new MoveUnitOrder(warrior.ID, (HexCoord)tarHex);
+                return new MoveUnitOrder(state.CurrentPlayer, warrior.ID, (HexCoord)tarHex);
             }
         }
         //结束ai回合
-        return new EndPhaseOrder();
+        return new EndPhaseOrder(state.CurrentPlayer);
     }
 }

@@ -7,8 +7,9 @@ namespace SparkAge.Model.Orders
     {
         public int UnitID;
 
-        public FoundCityOrder(int unitID)
+        public FoundCityOrder(int id, int unitID)
         {
+            PlayerId = id;
             UnitID = unitID;
         }
     }

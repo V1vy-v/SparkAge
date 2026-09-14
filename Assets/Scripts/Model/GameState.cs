@@ -34,13 +34,17 @@ namespace SparkAge.Model
         int currentPlayer;//当前可操作的玩家
         public int CurrentPlayer => currentPlayer;
 
-        public GameState(MapData map, GameInfo gameInfo)
+        public GameState(GameInfo gameInfo)
         {
             //配置数据
             this.gameInfo = gameInfo;
             //地图、玩家数据、单位数据、城市数据
-            this.map = map;
-            Players = new List<PlayerState>(8) { new PlayerState(1), new PlayerState(2) };
+            this.map = MapGenerator.Generate(gameInfo.GameSetUpInfo.MapWidth, gameInfo.GameSetUpInfo.MapHeight, gameInfo.GameSetUpInfo.Seed);
+            Players = new List<PlayerState>();
+            for(int i = 0; i < gameInfo.GameSetUpInfo.Slots.Count; i++)
+            {
+                Players.Add(new PlayerState(gameInfo.GameSetUpInfo.Slots[i].PlayerID));
+            }
             units = new List<Unit>(200);
             cities = new List<City>(100);
             //当前回合数、当前玩家、当前单位分配ID、当前城市分配ID
@@ -58,6 +62,16 @@ namespace SparkAge.Model
 
             spawnPoint = FindSpawnPoint(new HexCoord(1, 2));
             unit = new Unit(2, (HexCoord)spawnPoint, info, info.Movement);
+            unit.ID = nxtUnitID++;
+            units.Add(unit);
+
+            spawnPoint = FindSpawnPoint(new HexCoord(18, 18));
+            unit = new Unit(3, (HexCoord)spawnPoint, info, info.Movement);
+            unit.ID = nxtUnitID++;
+            units.Add(unit);
+
+            spawnPoint = FindSpawnPoint(new HexCoord(19, 1));
+            unit = new Unit(4, (HexCoord)spawnPoint, info, info.Movement);
             unit.ID = nxtUnitID++;
             units.Add(unit);
         }

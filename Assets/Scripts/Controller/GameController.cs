@@ -20,27 +20,35 @@ namespace SparkAge.Controller
 {
     public interface IOrderSink
     {
-        public bool SubmitOrder(BaseOrder order);
+        public int MyPlayerId { get; }
+        public bool IsMyTurn { get; }
+        public bool IsMine(int own);
+        public void RequestMoveUnit(int unitId, HexCoord target);
+        public void RequestBuildUnit(int cityId, UnitType unitType);
+        public void RequestFoundCity(int unitId);
+        public void RequestAttackUnit(int attackerId, int defenderId);
+        public void RequestAttackCity(int attackerId, int cityId);
+        public void RequestEndPhase();
     }
     public enum GamePhase
     {
-        PlayerTurn, //等待玩家输入
-        OtherPhase, //其他玩家操作中
+        PlayerTurn,  //等待玩家输入
+        OtherPhase,  //其他玩家操作中
         AiPhase,     //Ai操作中
-        GameOver    //玩家失败
+        GameOver     //玩家失败
     }
     /// <summary>
     /// 游戏控制层
     /// </summary>
     public class GameController : MonoBehaviour, IOrderSink
     {
-        [SerializeField] int seed;//地图种子
         [SerializeField] float hexSize = 1f;//单位大小
         [SerializeField] GameCfg gameCfg;//游戏配置表
         [SerializeField] CameraController CameraController;//相机控制器
 
         //控制层引用
         AiOrders ai;
+        GameSession session;
         //数据层引用
         GameState state;
         GameInfo gameInfo;
@@ -52,20 +60,23 @@ namespace SparkAge.Controller
         //控制器状态
         GamePhase phase = GamePhase.PlayerTurn;
         bool isBlockingInput = false;
-        Dictionary<int, bool> playerIsAi = new()
-        {
-            [1] = false,
-            [2] = true
-        };
+        public int MyPlayerId => session.MyPlayerId;
+        public bool IsMyTurn => session.MyPlayerId == state.CurrentPlayer;
+        public bool IsMine(int own) => MyPlayerId == own;
 
         private void Awake()
         {
             //配置表注入
             InitGameInfo();
-            //数据端口注入
+            //UI数据端口注入
             UIManager.Instance.SetOrderSink(this);
 
-            state = new GameState(MapGenerator.Generate(20, 20, seed), gameInfo);
+            state = new GameState(gameInfo);
+
+            ai = new AiOrders();
+            ai.Init(state);
+            session = new GameSession();
+            session.Init(gameCfg.gameSetUpCfg);
 
             mapView = gameObject.AddComponent<MapView>();
             mapView.Init(state, hexSize);
@@ -78,9 +89,6 @@ namespace SparkAge.Controller
 
             cityView = gameObject.AddComponent<CityView>();
             cityView.Init(state, hexSize, gameCfg.cityCfgs);
-
-            ai = new AiOrders();
-            ai.Init(state);
         }
         private void Start()
         {
@@ -98,7 +106,7 @@ namespace SparkAge.Controller
                 isBlockingInput = false;
                 //后续增加为所有其它玩家全失败
                 if (e.DefenderIsDead)
-                    SubmitOrder(new GameOverOrder());
+                    SubmitOrder(new GameOverOrder(MyPlayerId));
             });
 
             //构建地图
@@ -153,6 +161,12 @@ namespace SparkAge.Controller
             {
                 gameInfo.CityInfos.Add(new CityInfo(cfg.Name, cfg.Hp, cfg.Def, cfg.Radius, cfg.Production));
             }
+            List<SlotInfo> slots = new List<SlotInfo>();
+            foreach (var slot in gameCfg.gameSetUpCfg.Slots)
+            {
+                slots.Add(new SlotInfo(slot.PlayerId));
+            }
+            gameInfo.GameSetUpInfo = new GameSetUpInfo(gameCfg.gameSetUpCfg.Seed, gameCfg.gameSetUpCfg.MapWidth, gameCfg.gameSetUpCfg.MapHeight, slots);
         }
 
         /// <summary>
@@ -184,25 +198,25 @@ namespace SparkAge.Controller
             //回合结束
             if (Input.GetKeyDown(KeyCode.Space))
             {
-                SubmitOrder(new EndPhaseOrder());
+                SubmitOrder(new EndPhaseOrder(MyPlayerId));
                 if (selectionView.SelectedUnit != null)
                     selectionView.SelectUnit(selectionView.SelectedUnit);
             }
             //F键建城
             if (Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
             {
-                SubmitOrder(new FoundCityOrder(selectionView.SelectedUnit.ID));
+                SubmitOrder(new FoundCityOrder(MyPlayerId, selectionView.SelectedUnit.ID));
             }
             //1 2键造兵
             if (selectionView.SelectedCity != null)
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1))
                 {
-                    SubmitOrder(new BuildUnitOrder(selectionView.SelectedCity.ID, UnitType.Settler));
+                    SubmitOrder(new BuildUnitOrder(MyPlayerId, selectionView.SelectedCity.ID, UnitType.Settler));
                 }
                 else if (Input.GetKeyDown(KeyCode.Alpha2))
                 {
-                    SubmitOrder(new BuildUnitOrder(selectionView.SelectedCity.ID, UnitType.Warrior));
+                    SubmitOrder(new BuildUnitOrder(MyPlayerId, selectionView.SelectedCity.ID, UnitType.Warrior));
                 }
             }
 
@@ -224,7 +238,7 @@ namespace SparkAge.Controller
                 }
                 else
                     UIManager.Instance.HideMe<SelUnitPanel>();
-                if (selectionView.SelectedCity != null)
+                if (selectionView.SelectedCity != null && selectionView.SelectedCity.Owner == MyPlayerId)
                 {
                     var panel = UIManager.Instance.ShowPanel<SelCityPanel>();
                     panel.UpdatePanel(selectionView.SelectedCity);
@@ -241,11 +255,11 @@ namespace SparkAge.Controller
                     Unit tarUnit = state.GetUnitAt((HexCoord)hex);
                     City tarCity = state.GetCityAt((HexCoord)hex);
                     if (tarUnit == null && (tarCity == null || tarCity.Owner == selectionView.SelectedUnit.Owner))
-                        SubmitOrder(new MoveUnitOrder(selectionView.SelectedUnit.ID, (HexCoord)hex));
+                        SubmitOrder(new MoveUnitOrder(MyPlayerId, selectionView.SelectedUnit.ID, (HexCoord)hex));
                     else if (tarUnit != null)
-                        SubmitOrder(new AttackUnitOrder(selectionView.SelectedUnit.ID, tarUnit.ID));
+                        SubmitOrder(new AttackUnitOrder(MyPlayerId, selectionView.SelectedUnit.ID, tarUnit.ID));
                     else if (tarCity != null)
-                        SubmitOrder(new AttackCityOrder(selectionView.SelectedUnit.ID, tarCity.ID));
+                        SubmitOrder(new AttackCityOrder(MyPlayerId, selectionView.SelectedUnit.ID, tarCity.ID));
                 }
             }
         }
@@ -288,8 +302,9 @@ namespace SparkAge.Controller
         private void TryEndPhase()
         {
             if (isBlockingInput) return;
+
             state.EndPhase();
-            if (playerIsAi[state.CurrentPlayer])
+            if (session.IsServer && session.GetControllerType(state.CurrentPlayer) == ControllerType.AI) 
             { 
                 phase = GamePhase.AiPhase;
                 HandleAiOrders();
@@ -473,9 +488,13 @@ namespace SparkAge.Controller
             UIManager.Instance.ShowPanel<GameOverPanel>();
         }
 
-        public bool SubmitOrder(BaseOrder order)
+        private bool SubmitOrder(BaseOrder order)
         {
-            order.PlayerId = state.CurrentPlayer;
+            if(order.PlayerId != state.CurrentPlayer)
+            {
+                Debug.Log("非当前玩家命令");
+                return false;
+            }
             switch (order)
             {
                 case MoveUnitOrder o: 
@@ -493,14 +512,41 @@ namespace SparkAge.Controller
                 case EndPhaseOrder o:
                     TryEndPhase();
                     return false;
-                case GameOverOrder:
-                    GameOver();
-                    return false;
                 default:
-                    order.PlayerId = -1;
                     Debug.LogError($"未知命令类型：{order.GetType().Name}");
                     return false;
             }
+        }
+
+        //=============== UI层接口方法 ================
+        public void RequestBuildUnit(int cityId, UnitType unitType)
+        {
+            SubmitOrder(new BuildUnitOrder(MyPlayerId, cityId, unitType));
+        }
+
+        public void RequestFoundCity(int unitId)
+        {
+            SubmitOrder(new FoundCityOrder(MyPlayerId, unitId));
+        }
+
+        public void RequestEndPhase()
+        {
+            SubmitOrder(new EndPhaseOrder(MyPlayerId));
+        }
+
+        public void RequestMoveUnit(int unitId, HexCoord target)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public void RequestAttackUnit(int attackerId, int defenderId)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public void RequestAttackCity(int attackerId, int cityId)
+        {
+            throw new System.NotImplementedException();
         }
 
     }

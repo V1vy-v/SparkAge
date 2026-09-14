@@ -8,8 +8,9 @@ namespace SparkAge.Model.Orders
         public int CityID;
         public UnitType Type;
 
-        public BuildUnitOrder(int cityID, UnitType type)
+        public BuildUnitOrder(int id, int cityID, UnitType type)
         {
+            PlayerId = id;
             CityID = cityID;
             Type = type;
         }

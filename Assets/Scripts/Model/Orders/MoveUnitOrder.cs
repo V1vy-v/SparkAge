@@ -8,8 +8,9 @@ namespace SparkAge.Model.Orders
         public int UnitID;
         public HexCoord Target;
 
-        public MoveUnitOrder(int unitID, HexCoord target)
+        public MoveUnitOrder(int id, int unitID, HexCoord target)
         {
+            PlayerId = id;
             UnitID = unitID;
             Target = target;
         }

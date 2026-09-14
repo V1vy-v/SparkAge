@@ -14,7 +14,7 @@ public class GameStateTests
     {
         var map = new MapData(5, 5);
         foreach (var (c, t) in tiles) map.Tiles[c].Type = t;
-        return new GameState(map, null);
+        return new GameState(new GameInfo() { });
     }
 
     [Test]

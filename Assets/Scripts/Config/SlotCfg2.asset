@@ -9,12 +9,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9c763505dd6e6474a9d3b78bf59b8817, type: 3}
-  m_Name: DefaultCity
+  m_Script: {fileID: 11500000, guid: 59b9de5a2262c624a8f19eb2186d8a25, type: 3}
+  m_Name: SlotCfg2
   m_EditorClassIdentifier: 
-  Name: "\u9ED8\u8BA4\u57CE\u5E02"
-  Def: 1
-  Hp: 10
-  Radius: 2
-  Production: 0
-  Prefab: {fileID: 6291989017888005929, guid: 22a2552459c20364c9942f40b3fbe3ec, type: 3}
+  Type: 2
+  PlayerId: 2
+  CharacterId: 0
+  Name: 
+  Description: 
+  Prefab: {fileID: 0}
