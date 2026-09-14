@@ -82,3 +82,38 @@ BuildUnitEvent · UnitMoveEvent · FoundCityEvent · AttackUnitEvent · AttackCi
 - 模式：主机权威 + 命令中继 + 整状态广播（瘦客户端）；Model/Serialization（LitJson）+ Controller/NetworkSession（封装 Mirror，可替换）。
 - 接缝：AI 先抽出 GameController 的"命令接缝"（SubmitOrder/Intent），W5 网络复用（客户端 = 命令发主机）。
 - 演示：本机双客户端 / 局域网直连。
+## 10. ID 与引用：形态纪律（W5 联机定案，2026-09-14）
+
+### 10.1 每层固定一种形态
+
+| 层 | 形态 | 原因 |
+|---|---|---|
+| 线上格式：Order / 网络 DTO / 存档 | **只带 ID + 纯数据** | 对象引用不可序列化、无法跨端 |
+| 运行时：Model 规则方法、GameState 内部、AI 决策 | **对象引用** | 规则要读 unit.Atk / city.Hp 这类实例数据 |
+| 表现：Result、EventCenter 事件、View、协程参数 | **对象引用** | Unity 对象、字典键（Unit→GameObject）、协程局部变量 |
+| 转换点 | **只有两个** | ① 收到 Order：ID→引用；② 广播：引用→ID（客户端收到后再解析一次） |
+
+纪律：**每端只解析一次**——入口解析出引用后，整条内部链路只传引用，禁止二次转换（这是之前"反复来回换形态"的根因）。
+
+### 10.2 被移除实体的规则（关键）
+
+- **新建实体**（城市、造出的单位）：Result 带 ID 或引用都可以——它还在 Units/Cities 里，按 ID 能查到；
+- **被移除实体**（建城消耗的移民、阵亡的单位）：**必须靠"操作前捕获的引用"**，或让 Result / 事件显式携带引用；此时只给 ID 必然解析失败。
+- 因此会移除实体的入口统一写法：**先解析引用 → 再执行 → 用该引用构造表现事件**。
+  - 例：TryFoundCity(unitID) 先取 `Unit settler = state.TryGetUnit(unitID)`，再调 `FoundCity(settler)`（内部会 Units.Remove(settler)），最后用 settler 触发 FoundCityEvent 播销毁动画。
+
+### 10.3 Result 与广播 DTO 的定位
+
+- **Result = 本地表现数据**（允许带引用），不承担广播职责；
+- 广播 = **整状态快照（ID + 纯数据）+ 少量"表现提示 DTO"**（如 unitID + path），供客户端知道"播什么动画"；
+- 客户端：ApplySnapshot(snapshot) + PlayHint(hint)；解析一次 ID→引用后调用**同一套 View 方法**（表现代码只有一份，主机/客户端复用）。
+
+### 10.4 Order 提交入口
+
+- 统一入口 `SubmitOrder(order)`（UI / 网络）+ 内部引用重载（AI、已解析场景），两条路最终调用同一个 Model 方法；
+- **PlayerId 由入口打标**（本地 = 当前玩家；网络 = 按连接身份填），Order 构造函数不再接收 playerId；网络/回放收到的命令**不得覆盖**其自带的 PlayerId。
+
+### 10.5 ID 分配与查找（实现约束）
+
+- 所有 Unit/City 创建统一走 Model 工厂，**在创建处分配自增 ID**（当前开局两个单位未分配 ID，均为 0，必须修）；
+- `TryGetUnit` / `TryGetCity` 必须**按 ID 线性查找**，**不得用列表下标**（单位阵亡、移民被消耗后下标错位，会取到错误对象）。

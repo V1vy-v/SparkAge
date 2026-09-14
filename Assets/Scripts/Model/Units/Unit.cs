@@ -17,6 +17,7 @@ namespace SparkAge.Model.Units
     /// </summary>
     public class Unit
     {
+        public int ID;//唯一ID
         public int Owner;//所属玩家
         public UnitType Type;//单位类型
         public HexCoord Position;//位置

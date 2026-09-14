@@ -24,27 +24,27 @@ public class AiOrders
     public BaseOrder DecideOrders()
     {
         //城市自动造兵
-        foreach (var city in state.Cities)
+        foreach (var city in state.AllCities)
         {
             if (city.Owner == state.CurrentPlayer && !usedCities.Contains(city))
             {
                 usedCities.Add(city);
-                return new BuildUnitOrder(state.CurrentPlayer, city, UnitType.Warrior);
+                return new BuildUnitOrder(city.ID, UnitType.Warrior);
             }
         }
 
         //移民自动建城
-        foreach (var settler in state.Units)
+        foreach (var settler in state.AllUnits)
         {
             if (settler.Owner == state.CurrentPlayer && settler.Type == UnitType.Settler && !usedUnits.Contains(settler))
             {
                 usedUnits.Add(settler);
-                return new FoundCityOrder(state.CurrentPlayer, settler);
+                return new FoundCityOrder(settler.ID);
             }  
         }
 
         //勇士自动靠近玩家城市
-        foreach (var warrior in state.Units)
+        foreach (var warrior in state.AllUnits)
         {
             if (warrior.Type == UnitType.Settler || 
                 warrior.Owner != state.CurrentPlayer || 
@@ -58,16 +58,16 @@ public class AiOrders
                 HexCoord tarHex = attackTiles.First();
                 if (state.GetUnitAt(tarHex) is Unit u)
                 {
-                    return new AttackUnitOrder(state.CurrentPlayer, warrior, u);
+                    return new AttackUnitOrder(warrior.ID, u.ID);
                 }
                 else if (state.GetCityAt(tarHex) is City c)
                 {
-                    return new AttackCityOrder(state.CurrentPlayer, warrior, c);
+                    return new AttackCityOrder(warrior.ID, c.ID);
                 }
             }
             else
             {
-                HexCoord target = state.FindTarget(warrior);
+                HexCoord target = state.AiFindTarget(warrior);
                 int best = target.DistanceTo(warrior.Position);
                 HexCoord? tarHex = null;
                 foreach (var hex in moveTiles)
@@ -83,7 +83,7 @@ public class AiOrders
                     }
                 }
                 if (tarHex == null) continue;
-                return new MoveUnitOrder(state.CurrentPlayer, warrior, (HexCoord)tarHex);
+                return new MoveUnitOrder(warrior.ID, (HexCoord)tarHex);
             }
         }
         //结束ai回合

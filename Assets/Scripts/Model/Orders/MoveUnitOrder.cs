@@ -5,13 +5,12 @@ namespace SparkAge.Model.Orders
 {
     public class MoveUnitOrder : BaseOrder
     {
-        public Unit Unit;
+        public int UnitID;
         public HexCoord Target;
 
-        public MoveUnitOrder(int id, Unit unit, HexCoord target)
+        public MoveUnitOrder(int unitID, HexCoord target)
         {
-            PlayerId = id;
-            Unit = unit;
+            UnitID = unitID;
             Target = target;
         }
     }

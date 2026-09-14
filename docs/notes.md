@@ -176,3 +176,10 @@
 - 做法：Prefabs/OwnerMarker.prefab（Plane/圆盘，法线朝上天然水平；去碰撞体，尺寸在预制体内调好）。
 - 代码只做：Instantiate(prefab, host) 子物体挂载 + 设 localPosition(头顶) + 按 owner 换共享材质（per-owner 材质数组 or MaterialPropertyBlock），避免每单位实例化。
 - 颜色表留 View；单位/城市生成时 AttachOwnerMarker(host, owner)。23. **战斗模型定案（W4a）**：攻击 = 目标在本回合可达即攻（移动+攻击合并），消耗全部移动力（MovementLeft=0）；双方结算：攻方伤害 max(1, 攻Atk−守Def)；**守方 Atk>0 才反击**，伤害 max(1, 守Atk−攻Def)；守方死亡→攻方进格，攻方死亡→移除；攻方若活着未杀→停在目标相邻格。单位属性统一 GameRules：战士 3/2/10/移2，移民 0/0/1/移3。
+
+## 问答记录：ID 与引用形态纪律已写入 tech.md §10（2026-09-14）
+- 线上格式（Order / 网络 DTO / 存档）只带 ID；运行时（Model/GameState/AI）与表现（Result / EventCenter 事件 / View / 协程）用引用；转换点只有两个：收到 Order（ID→引用）、广播（引用→ID），客户端收到广播再解析一次 → **每端只解析一次**。
+- 被移除实体（建城消耗的移民、阵亡单位）必须用"操作前捕获的引用"，只给 ID 必然解析失败（执行后已不在 Units/Cities）。
+- Result = 本地表现数据（允许引用）；广播 = 整状态快照 + 少量"表现提示 DTO"；客户端 ApplySnapshot + PlayHint 复用同一套 View 方法。
+- PlayerId 由 SubmitOrder 入口打标；网络/回放收到的命令不得覆盖。
+- 实现约束：Unit/City 创建统一分配自增 ID（开局两单位当前 ID 均为 0）；TryGetUnit/TryGetCity 改按 ID 线性查找，禁用列表下标。

@@ -5,14 +5,13 @@ namespace SparkAge.Model.Orders
 {
     public class AttackCityOrder : BaseOrder
     {
-        public Unit Attacker;
-        public City City;
+        public int AttackerID;
+        public int CityID;
 
-        public AttackCityOrder(int id, Unit attacker, City city)
+        public AttackCityOrder(int attackerID, int cityID)
         {
-            PlayerId = id;
-            Attacker = attacker;
-            City = city;
+            AttackerID = attackerID;
+            CityID = cityID;
         }
     }
 }

@@ -9,6 +9,7 @@ namespace SparkAge.Model.Cities
     /// </summary>
     public class City
     {
+        public int ID;//唯一ID
         public int Owner;//所属玩家
         public HexCoord Position;//位置
 

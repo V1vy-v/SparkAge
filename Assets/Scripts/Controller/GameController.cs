@@ -111,30 +111,12 @@ namespace SparkAge.Controller
             (Vector3, Vector3, Vector3) keyPos = mapView.GetMapCenterAndBounds();
             CameraController.Init(keyPos.Item1, keyPos.Item2, keyPos.Item3);
 
-            //初始拥有一个移民
-            HexCoord? spawnPoint = state.FindSpawnPoint(state.Map.Center);
-            UnitInfo info = gameInfo.UnitInfos[UnitType.Settler];
-            if (spawnPoint != null)
+            //初始移民
+            foreach(var settler in state.AllUnits)
             {
-                Unit unit = new Unit(1, (HexCoord)spawnPoint, info, info.Movement);
-                GameObject obj = unitView.BuildUnit(unit);
-                state.Units.Add(unit);
-                unitView.UnitObjs[unit] = obj;
+                GameObject obj = unitView.BuildUnit(settler);
+                unitView.UnitObjs[settler] = obj;
             }
-            else
-                print("创建单位出生点失败！！！");
-
-            //初始拥有一个移民
-            spawnPoint = state.FindSpawnPoint(new HexCoord(1, 2));
-            if (spawnPoint != null)
-            {
-                Unit unit = new Unit(2, (HexCoord)spawnPoint, info, info.Movement);
-                GameObject obj = unitView.BuildUnit(unit);
-                state.Units.Add(unit);
-                unitView.UnitObjs[unit] = obj;
-            }
-            else
-                print("创建单位出生点失败！！！");
         }
         private void Update()
         {
@@ -209,18 +191,18 @@ namespace SparkAge.Controller
             //F键建城
             if (Input.GetKeyDown(KeyCode.F) && selectionView.SelectedUnit != null && selectionView.SelectedUnit.Type == UnitType.Settler)
             {
-                SubmitOrder(new FoundCityOrder(state.CurrentPlayer, selectionView.SelectedUnit));
+                SubmitOrder(new FoundCityOrder(selectionView.SelectedUnit.ID));
             }
             //1 2键造兵
             if (selectionView.SelectedCity != null)
             {
                 if (Input.GetKeyDown(KeyCode.Alpha1))
                 {
-                    SubmitOrder(new BuildUnitOrder(state.CurrentPlayer, selectionView.SelectedCity, UnitType.Settler));
+                    SubmitOrder(new BuildUnitOrder(selectionView.SelectedCity.ID, UnitType.Settler));
                 }
                 else if (Input.GetKeyDown(KeyCode.Alpha2))
                 {
-                    SubmitOrder(new BuildUnitOrder(state.CurrentPlayer, selectionView.SelectedCity, UnitType.Warrior));
+                    SubmitOrder(new BuildUnitOrder(selectionView.SelectedCity.ID, UnitType.Warrior));
                 }
             }
 
@@ -259,11 +241,11 @@ namespace SparkAge.Controller
                     Unit tarUnit = state.GetUnitAt((HexCoord)hex);
                     City tarCity = state.GetCityAt((HexCoord)hex);
                     if (tarUnit == null && (tarCity == null || tarCity.Owner == selectionView.SelectedUnit.Owner))
-                        SubmitOrder(new MoveUnitOrder(state.CurrentPlayer, selectionView.SelectedUnit, (HexCoord)hex));
+                        SubmitOrder(new MoveUnitOrder(selectionView.SelectedUnit.ID, (HexCoord)hex));
                     else if (tarUnit != null)
-                        SubmitOrder(new AttackUnitOrder(state.CurrentPlayer, selectionView.SelectedUnit, tarUnit));
+                        SubmitOrder(new AttackUnitOrder(selectionView.SelectedUnit.ID, tarUnit.ID));
                     else if (tarCity != null)
-                        SubmitOrder(new AttackCityOrder(state.CurrentPlayer, selectionView.SelectedUnit, tarCity));
+                        SubmitOrder(new AttackCityOrder(selectionView.SelectedUnit.ID, tarCity.ID));
                 }
             }
         }
@@ -315,8 +297,15 @@ namespace SparkAge.Controller
             else
                 phase = GamePhase.PlayerTurn;
         }
-        private bool TryMoveUnit(Unit unit, HexCoord tarHex)
+        private bool TryMoveUnit(int unitID, HexCoord tarHex)
         {
+            Unit unit = state.TryGetUnit(unitID);
+            if (unit == null)
+            {
+                Debug.Log("非法ID");
+                return false;
+            }
+
             MoveResult result = state.MoveUnit(unit, tarHex);
             if (!result.Success)
             {
@@ -341,8 +330,14 @@ namespace SparkAge.Controller
             return true;
         }
 
-        private void TryFoundCity(Unit unit)
+        private void TryFoundCity(int unitID)
         {
+            Unit unit = state.TryGetUnit(unitID);
+            if(unit == null)
+            {
+                Debug.Log("非法ID");
+                return;
+            }
             FoundCityResult result = state.FoundCity(unit);
             if (!result.Success)
             {
@@ -370,9 +365,15 @@ namespace SparkAge.Controller
             EventCenter.Instance.EventTrigger<FoundCityEvent>(new FoundCityEvent(result.City, unit));
         }
 
-        private void TryBuildUnit(City city, UnitType type)
+        private void TryBuildUnit(int cityID, UnitType type)
         {
-            //数据层
+            City city = state.TryGetCity(cityID);
+            if(city == null)
+            {
+                Debug.Log("非法ID");
+                return;
+            }
+
             BuildUnitResult result = state.BuildUnit(city, type);
             if (!result.Success)
             {
@@ -393,8 +394,16 @@ namespace SparkAge.Controller
             EventCenter.Instance.EventTrigger<BuildUnitEvent>(new BuildUnitEvent(city, result.Unit));
         }
 
-        private bool TryAttackUnit(Unit attacker, Unit defender)
+        private bool TryAttackUnit(int attackerID, int defenderID)
         {
+            Unit attacker = state.TryGetUnit(attackerID);
+            Unit defender = state.TryGetUnit(defenderID);
+            if (attacker == null || defender == null)
+            {
+                Debug.Log("非法ID");
+                return false;
+            }
+
             AttackUnitResult result = state.AttackUnit(attacker, defender);
             if (!result.Success)
             {
@@ -422,8 +431,16 @@ namespace SparkAge.Controller
             return true;
         }
 
-        private bool TryAttackCity(Unit attacker, City city)
+        private bool TryAttackCity(int attackerID, int cityID)
         {
+            Unit attacker = state.TryGetUnit(attackerID);
+            City city = state.TryGetCity(cityID);
+            if (attacker == null || city == null)
+            {
+                Debug.Log("非法ID");
+                return false;
+            }
+
             AttackCityResult result = state.AttackCity(attacker, city);
             if (!result.Success)
             {
@@ -458,19 +475,20 @@ namespace SparkAge.Controller
 
         public bool SubmitOrder(BaseOrder order)
         {
+            order.PlayerId = state.CurrentPlayer;
             switch (order)
             {
                 case MoveUnitOrder o: 
-                    return TryMoveUnit(o.Unit, o.Target);
+                    return TryMoveUnit(o.UnitID, o.Target);
                 case AttackUnitOrder o: 
-                    return TryAttackUnit(o.Attacker, o.Defender);
+                    return TryAttackUnit(o.AttackerID, o.DefenderID);
                 case AttackCityOrder o: 
-                    return TryAttackCity(o.Attacker, o.City);
+                    return TryAttackCity(o.AttackerID, o.CityID);
                 case FoundCityOrder o: 
-                    TryFoundCity(o.Unit);
+                    TryFoundCity(o.UnitID);
                     return false;
                 case BuildUnitOrder o: 
-                    TryBuildUnit(o.City, o.Type);
+                    TryBuildUnit(o.CityID, o.Type);
                     return false;
                 case EndPhaseOrder o:
                     TryEndPhase();
@@ -478,7 +496,8 @@ namespace SparkAge.Controller
                 case GameOverOrder:
                     GameOver();
                     return false;
-                default: 
+                default:
+                    order.PlayerId = -1;
                     Debug.LogError($"未知命令类型：{order.GetType().Name}");
                     return false;
             }
