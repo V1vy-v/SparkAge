@@ -1,6 +1,5 @@
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
-using System.Xml.Linq;
+using SparkAge.Model.StaticInfos;
 
 namespace SparkAge.Model.Units
 {

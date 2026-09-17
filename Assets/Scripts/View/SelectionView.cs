@@ -2,7 +2,6 @@ using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections.Generic;

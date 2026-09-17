@@ -1,17 +1,16 @@
+using Mirror;
 using SparkAge.Config;
+using SparkAge.Controller.Network;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
-using SparkAge.Model.Map;
 using SparkAge.Model.Orders;
 using SparkAge.Model.Units;
 using SparkAge.View;
 using SparkAge.View.UI;
 using System.Collections;
-using System.Collections.Generic;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
 using static SparkAge.Model.GameState;
@@ -29,6 +28,9 @@ namespace SparkAge.Controller
         public void RequestAttackUnit(int attackerId, int defenderId);
         public void RequestAttackCity(int attackerId, int cityId);
         public void RequestEndPhase();
+        public void RequestHost();
+        public void RequestJoin(string address);
+        public void RequestLeave();
     }
     public enum GamePhase
     {
@@ -42,9 +44,8 @@ namespace SparkAge.Controller
     /// </summary>
     public class GameController : MonoBehaviour, IOrderSink
     {
-        [SerializeField] float hexSize = 1f;//单位大小
-        [SerializeField] GameCfg gameCfg;//游戏配置表
-        [SerializeField] CameraController CameraController;//相机控制器
+        [SerializeField] float hexSize = 1f;                //单位大小
+        [SerializeField] CameraController CameraController; //相机控制器
 
         //控制层引用
         AiOrders ai;
@@ -57,38 +58,22 @@ namespace SparkAge.Controller
         UnitView unitView;
         SelectionView selectionView;
         CityView cityView;
+
         //控制器状态
         GamePhase phase = GamePhase.PlayerTurn;
         bool isBlockingInput = false;
-        public int MyPlayerId => session.MyPlayerId;
-        public bool IsMyTurn => session.MyPlayerId == state.CurrentPlayer;
+
+        public int MyPlayerId => NetworkMgr.Instance.MyPlayerId;
+        public bool IsMyTurn => NetworkMgr.Instance.MyPlayerId == state.CurrentPlayer;
         public bool IsMine(int own) => MyPlayerId == own;
 
         private void Awake()
         {
-            //配置表注入
+            //配置装配与注入
             InitGameInfo();
-            //UI数据端口注入
             UIManager.Instance.SetOrderSink(this);
-
-            state = new GameState(gameInfo);
-
-            ai = new AiOrders();
-            ai.Init(state);
-            session = new GameSession();
-            session.Init(gameCfg.gameSetUpCfg);
-
-            mapView = gameObject.AddComponent<MapView>();
-            mapView.Init(state, hexSize);
-
-            unitView = gameObject.AddComponent<UnitView>();
-            unitView.Init(state, hexSize, gameCfg.unitCfgs);
-
-            selectionView = gameObject.AddComponent<SelectionView>();
-            selectionView.Init(state, hexSize, mapView.HexMesh);
-
-            cityView = gameObject.AddComponent<CityView>();
-            cityView.Init(state, hexSize, gameCfg.cityCfgs);
+            //创建游戏状态
+            StartGame();
         }
         private void Start()
         {
@@ -104,20 +89,21 @@ namespace SparkAge.Controller
             EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
                 isBlockingInput = false;
-                //后续增加为所有其它玩家全失败
-                if (e.DefenderIsDead)
-                    SubmitOrder(new GameOverOrder(MyPlayerId));
+                ////后续增加为所有其它玩家全失败
+                //if (e.DefenderIsDead)
+                //    SubmitOrder(new GameOverOrder(MyPlayerId));
             });
 
             //构建地图
             mapView.BuildTiles();
 
             //显示HUD
-            UIManager.Instance.ShowPanel<HUD>();
+            var panel = UIManager.Instance.ShowPanel<HUD>();
+            panel.InitMyInfo(gameInfo.PlayerInfos.Find(p => p.Id == MyPlayerId));
 
             //初始化摄像机脚本
             (Vector3, Vector3, Vector3) keyPos = mapView.GetMapCenterAndBounds();
-            CameraController.Init(keyPos.Item1, keyPos.Item2, keyPos.Item3);
+            CameraController.Init(keyPos.Item1, keyPos.Item2, keyPos.Item3, keyPos.Item1);
 
             //初始移民
             foreach(var settler in state.AllUnits)
@@ -128,7 +114,6 @@ namespace SparkAge.Controller
         }
         private void Update()
         {
-            UIManager.Instance.GetPanel<HUD>().UpdateHUD(0, state.TurnNumber);
             switch (phase)
             {
                 case GamePhase.PlayerTurn:
@@ -152,22 +137,38 @@ namespace SparkAge.Controller
         /// </summary>
         private void InitGameInfo()
         {
+            //装配游戏房间配置（玩家选择角色和地图）
             gameInfo = new GameInfo();
-            foreach (var cfg in gameCfg.unitCfgs)
+            print(NetworkMgr.Instance.MapId);
+            gameInfo.MapInfo = ConfigMgr.Instance.StaticInfo.MapInfos[NetworkMgr.Instance.MapId];
+            foreach(var slot in NetworkMgr.Instance.Slots)
             {
-                gameInfo.UnitInfos[cfg.Type] = new UnitInfo(cfg.Type, cfg.Name, cfg.Atk, cfg.Def, cfg.Hp, cfg.Movement, cfg.Cost);
+                gameInfo.PlayerInfos.Add(new PlayerInfo { Id = slot.PlayerId, Name = slot.Name, CharacterInfo = ConfigMgr.Instance.StaticInfo.CharacterInfos[slot.CharacterId] });
             }
-            foreach (var cfg in gameCfg.cityCfgs)
-            {
-                gameInfo.CityInfos.Add(new CityInfo(cfg.Name, cfg.Hp, cfg.Def, cfg.Radius, cfg.Production));
-            }
-            List<SlotInfo> slots = new List<SlotInfo>();
-            foreach (var slot in gameCfg.gameSetUpCfg.Slots)
-            {
-                slots.Add(new SlotInfo(slot.PlayerId));
-            }
-            gameInfo.GameSetUpInfo = new GameSetUpInfo(gameCfg.gameSetUpCfg.Seed, gameCfg.gameSetUpCfg.MapWidth, gameCfg.gameSetUpCfg.MapHeight, slots);
         }
+        private void StartGame()
+        {
+            state = new GameState(gameInfo, ConfigMgr.Instance.StaticInfo);
+
+            ai = new AiOrders();
+            ai.Init(state);
+
+            session = new GameSession();
+            session.Init(NetworkMgr.Instance.Slots);
+
+            mapView = gameObject.AddComponent<MapView>();
+            mapView.Init(state, hexSize);
+
+            unitView = gameObject.AddComponent<UnitView>();
+            unitView.Init(state, hexSize);
+
+            selectionView = gameObject.AddComponent<SelectionView>();
+            selectionView.Init(state, hexSize, mapView.HexMesh);
+
+            cityView = gameObject.AddComponent<CityView>();
+            cityView.Init(state, hexSize);
+        }
+
 
         /// <summary>
         /// 获取点击处地块Hex
@@ -237,14 +238,14 @@ namespace SparkAge.Controller
                     panel.UpdatePanel(selectionView.SelectedUnit);
                 }
                 else
-                    UIManager.Instance.HideMe<SelUnitPanel>();
+                    UIManager.Instance.HidePanel<SelUnitPanel>();
                 if (selectionView.SelectedCity != null && selectionView.SelectedCity.Owner == MyPlayerId)
                 {
                     var panel = UIManager.Instance.ShowPanel<SelCityPanel>();
                     panel.UpdatePanel(selectionView.SelectedCity);
                 }
                 else
-                    UIManager.Instance.HideMe<SelCityPanel>();
+                    UIManager.Instance.HidePanel<SelCityPanel>();
             }
             //鼠标右键点击
             if (Input.GetMouseButtonDown(1) && selectionView.SelectedUnit != null)
@@ -304,7 +305,7 @@ namespace SparkAge.Controller
             if (isBlockingInput) return;
 
             state.EndPhase();
-            if (session.IsServer && session.GetControllerType(state.CurrentPlayer) == ControllerType.AI) 
+            if (NetworkServer.active && session.GetControllerType(state.CurrentPlayer) == ControllerType.AI) 
             { 
                 phase = GamePhase.AiPhase;
                 HandleAiOrders();
@@ -549,5 +550,16 @@ namespace SparkAge.Controller
             throw new System.NotImplementedException();
         }
 
+        public void RequestHost()
+        {
+        }
+
+        public void RequestJoin(string address)
+        {
+        }
+
+        public void RequestLeave()
+        {
+        }
     }
 }

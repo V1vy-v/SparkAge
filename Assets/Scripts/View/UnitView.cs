@@ -3,7 +3,6 @@ using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
 using System.Collections;
@@ -24,17 +23,15 @@ namespace SparkAge.View
         //外部提供字段
         GameState state;
         float hexSize;
-        List<UnitCfg> unitCfgs;
 
         //独占字段
         Dictionary<Unit, GameObject> unitObjs = new Dictionary<Unit, GameObject>();// 单位->游戏对象的映射
         public Dictionary<Unit, GameObject> UnitObjs => unitObjs;
 
-        public void Init(GameState state, float hexSize, List<UnitCfg> unitCfgs)
+        public void Init(GameState state, float hexSize)
         {
             this.state = state;
             this.hexSize = hexSize;
-            this.unitCfgs = unitCfgs;
 
             //warriorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
             //{
@@ -66,7 +63,7 @@ namespace SparkAge.View
         public GameObject BuildUnit(Unit unit)
         {
             UnitCfg cfg = null;
-            foreach(var unitCfg in unitCfgs)
+            foreach(var unitCfg in ConfigMgr.Instance.unitCfgs)
                 if(unitCfg.Type == unit.Type)
                     cfg = unitCfg;
             GameObject unitObj = Instantiate(cfg.Prefab);

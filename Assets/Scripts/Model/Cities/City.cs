@@ -1,6 +1,6 @@
-using SparkAge.Model.GameInfos;
+
 using SparkAge.Model.Hex;
-using System.Xml.Linq;
+using SparkAge.Model.StaticInfos;
 
 namespace SparkAge.Model.Cities
 {
@@ -11,9 +11,9 @@ namespace SparkAge.Model.Cities
     {
         public int ID;//唯一ID
         public int Owner;//所属玩家
+        public string Name;//名字
         public HexCoord Position;//位置
 
-        public string Name;//名字
         public int Radius;//半径
         public int Production;//当前生产力
         public int Hp;//当前血量
@@ -25,7 +25,6 @@ namespace SparkAge.Model.Cities
             Owner = owner;
             Position = position;
 
-            Name = info.Name;
             Radius = info.Radius;
             Production = info.Production;
             Hp = MaxHp = info.Hp;

@@ -1,0 +1,438 @@
+﻿# 星火纪元 · 联机开发卡（NET-1 ~ NET-8）
+
+> 本文档是联机部分的**执行卡集合**，每张卡都说明它在「游戏流程」和「代码架构」中的意义。
+> 关联：docs/tech.md §9（网络方案）、docs/design.md（策划）、docs/notes.md（决策记录）。
+
+---
+
+## 0. 总体流程（唯一一条路径，没有"单机/联机"开关）
+
+```
+BeginScene
+  ① BeginPanel（开始界面：显示昵称）
+  ② LoginPanel（输入昵称 → 本地保存）
+  ③ 创建房间 → StartHost        ／ 加入房间 → ConnectPanel（输入 address）→ StartClient
+  ④ RoomPanel（固定 4 槽：昵称 / 角色 Dropdown / 就绪；房主可配 AI 填充）
+  ⑤ 服务端判定「所有人类槽位就绪」→ 广播 GameStart（seed + 最终槽位表）
+  ⑥ 加载 GameScene → GameController.StartGame(session, setupInfo)
+GameScene
+  ⑦ 对局中：命令上行（客户端 → 服务端）→ 权威执行 → 状态下行（服务端 → 客户端）
+```
+
+**核心原则**（贯穿所有卡）：
+- 服务端（Host）是唯一权威：跑 Model、校验命令、跑 AI、判定胜负；
+- 客户端是瘦客户端：发意图（Order）、收事实（状态快照）、只负责显示；
+- 单机 = Host + 4 槽中的其余槽位填 AI —— **同一条代码路径**。
+
+---
+
+## NET-0（取消）：联机实现风格定为"教程式"
+
+**决定**：联机部分采用 **Mirror 教程的直白写法**，不做适配层。
+
+- 连接：UI 直接调 `NetworkManager.singleton.StartHost()` / `.StartClient(address)`；
+- 不写 `NetworkSession` 适配层、不写 `NetworkBootstrap`、不拆 UI 接口（这些留给 NET-6/NET-7 需要"命令拦截、来源校验、状态广播"时再做）；
+- 跨场景：给 `NetworkManager` 勾 **Don't Destroy On Load**（挂在常驻对象上）即可；
+- 需要 Mirror 回调（如玩家连接、自定义消息）时，按教程做法：**子类化 `NetworkManager`** 或用一个 MonoBehaviour 调 `NetworkClient/NetworkServer.RegisterHandler`。
+
+> 理由：首次学网络，优先"和教程一致、能搜到答案"；架构层的封装等联机跑通、需求明确后再加。
+
+---
+## NET-1：本地玩家资料（登录/昵称）
+
+> **实现方式（已定，2026-09）**：昵称**仅存内存、不持久化**；每次启动都弹登录让玩家输入（本地多开测试天然不冲突，也不需要 PlayerPrefs）。以后若要记住昵称再引入持久化。
+
+**目标**：每台机器先知道自己"是谁"（昵称），供房间显示与识别。
+
+- **流程意义**：房间里 4 个槽位要靠昵称区分"哪个是我"；没有它，玩家无法确认自己的槽位/角色。
+- **架构意义**：昵称是**客户端本地资料**，不属于游戏世界（不进 Model）。放在会话层（`Controller/Network/LocalPlayerProfile`）并持久化（PlayerPrefs）。
+- **做什么**：
+  - 新增 `LocalPlayerProfile`（昵称 + 读写 PlayerPrefs 的方法）；
+  - `LoginPanel` 的"完成"按钮：保存昵称 → `HideMe()`；
+  - `Main.cs` 判断"是否首次"：首次显示 `LoginPanel`，否则直接 `BeginPanel`；`BeginPanel` 显示当前昵称。
+- **验收**：输入昵称 → 保存 → 重启仍是该昵称；BeginPanel 正确显示。
+- **不做**：账号系统、密码、服务端账号校验（昵称只用于房间显示）。
+
+---
+
+## NET-2：装 Mirror + 连接打通（教程式）
+
+**目标**：Editor 跑 Host，另一个实例 Join 成功，两端能看到"已连接"。
+
+- **流程意义**：这是"创建房间 / 加入房间"的底层能力，NET-3~NET-5 都建立在它之上。
+- **架构意义**：这一卡只碰"传输"，不碰任何游戏逻辑；Mirror 的用法与教程一致（`NetworkManager.singleton`）。
+- **做什么**：
+  1. 装 Mirror（Package Manager → Add package from git URL）；
+  2. 场景（BeginScene）加一个常驻对象，挂 `NetworkManager`（Transport 用默认 KCP），勾上 **Don't Destroy On Load**；
+  3. `BeginPanel` 的"创建房间"按钮 → `NetworkManager.singleton.StartHost()`；
+  4. `ConnectPanel` 的 Join 按钮 → `NetworkManager.singleton.networkAddress = 地址; NetworkManager.singleton.StartClient();`
+  5. 连接状态/切面板：**必须用 NetworkManager 的虚方法**（见下方"坑 3"），不要订阅 `NetworkClient.OnConnectedEvent` 之类静态事件；
+  6. 连接成功后 `ShowPanel<RoomPanel>()`（房间内容 NET-3 做）。
+- **验收**：Editor Host + ParrelSync/打包实例 Join(127.0.0.1) → 两端显示已连接；断开回退不崩；不打任何 NetworkObject。
+- **不做**：房间数据、开局、命令、状态同步。
+
+### NET-2 常见坑（实测补充）
+
+**坑 1：Player Prefab 为空会报错**
+Mirror 的 `NetworkManager` 默认勾选 `Auto Create Player`，勾着但 `Player Prefab` 为空时，StartHost/StartClient 会报错。
+→ 修法：**取消勾选 `Auto Create Player`**（我们的"玩家"是 Model 里的概念，不使用 Mirror 的 player 对象；因此 Player Prefab 保持空是对的）。
+
+
+**坑 3：不要订阅 `NetworkClient.OnConnectedEvent` 等静态事件（会失效）**
+源码位置：`Assets/Mirror/Core/NetworkClient.cs`
+- L102-104：`OnConnectedEvent / OnDisconnectedEvent / OnErrorEvent` 是**静态字段**；
+- L2053-2055：`StartClient/StartHost` 过程中会把它们**直接 `= null` 清空** → 你在点按钮之前订阅的回调全被抹掉，UI 永远收不到"已连接"。
+
+正确做法：**子类化 NetworkManager，override 虚方法**（`Assets/Mirror/Core/NetworkManager.cs` 提供）：
+- `OnClientConnect()` —— 连上服务端（Host 自己也会触发）→ 切到 RoomPanel
+- `OnClientDisconnect()` —— 断开 → 切回 BeginPanel
+- `OnClientError(TransportError error, string reason)` —— 连接失败 → 显示错误
+- `OnServerConnect(NetworkConnectionToClient conn)` —— 服务端侧有新客户端接入（NET-3 分配 PlayerID 用）
+
+参考代码：
+
+```csharp
+using Mirror;
+using System;
+
+public class SparkAgeNetworkManager : NetworkManager
+{
+    public event Action Connected;                       // 连上（含 Host 自己）
+    public event Action Disconnected;
+    public event Action<string> ConnectFailed;
+
+    public override void OnClientConnect()
+    {
+        base.OnClientConnect();
+        Connected?.Invoke();
+    }
+
+    public override void OnClientDisconnect()
+    {
+        base.OnClientDisconnect();
+        Disconnected?.Invoke();
+    }
+
+    public override void OnClientError(TransportError error, string reason)
+    {
+        base.OnClientError(error, reason);
+        ConnectFailed?.Invoke(reason);
+    }
+}
+```
+
+UI 侧（在面板 `Init()` 里订阅一次；面板是常驻的，Init 只跑一次）：
+
+```csharp
+var nm = (SparkAgeNetworkManager)NetworkManager.singleton;   // 场景里换成我们的子类
+nm.Connected    += () => { UIManager.Instance.ShowPanel<RoomPanel>(); };
+nm.Disconnected += () => { UIManager.Instance.ShowPanel<BeginPanel>(); };
+nm.ConnectFailed += msg => Debug.LogError($"连接失败：{msg}");
+```
+**调用链（源码实证，解释了"为什么必须 override 虚方法"）**
+1. `NetworkManager.RegisterClientMessages()`（`Assets/Mirror/Core/NetworkManager.cs` L757-760）：
+   `NetworkClient.OnConnectedEvent = OnClientConnectInternal;` —— **NetworkManager 用 `=` 把自己的处理器写进这些静态字段**，所以你提前订阅的回调被覆盖；
+2. 连接成功后 `NetworkClient` 触发 `OnConnectedEvent?.Invoke()`（`NetworkClient.cs` L280）；
+3. 于是进入 `NetworkManager.OnClientConnectInternal()`（`NetworkManager.cs` L1211）；
+4. 它内部调用 **virtual** 的 `OnClientConnect()`（L1248）；
+5. 你 override 的 `NetworkMgr.OnClientConnect()` 被执行 ✅。
+
+> 一句话：**NetworkClient / NetworkServer 是引擎，NetworkManager 是引擎的遥控器 + 回调出口；那些静态事件是它们之间的内部线，不是留给你的公开接口。**
+**坑 2：同机多开时 PlayerPrefs 是共享的**
+`PlayerPrefs` 按「公司名 + 产品名」存在操作系统里 → **同一台电脑上的多个客户端实例共享同一份**，所以两个实例会读到同一个昵称、`IsFirst` 也一起为 false。
+→ 三种处理：
+1. **接受同名**（最省事，仅供本地测试；真机联机时每台机器各自独立，不存在这问题）；
+2. **命令行覆盖**：启动参数带 `-nickname=Alice` 时优先用它，否则读 PlayerPrefs（ParrelSync 支持给克隆实例传启动参数）——推荐，既保留"记住昵称"又能在本机测出两个不同名字；
+3. **昵称不做持久化、每次启动都弹登录** —— 已采用此项：每个实例各自输入昵称，同机多开不再冲突。
+---
+
+## NET-3：房间状态与槽位（RoomState 权威 + 同步）
+
+**目标**：4 个槽位（人类/AI、昵称、角色、就绪）在所有端看到的是**同一份权威数据**。
+
+- **流程意义**：房间阶段的核心——谁在房间里、谁是几号、哪个槽是我、哪些槽将来是 AI。开局的一切（玩家数、出生点、回合顺序）都由这份槽位表决定。
+- **架构意义**：`RoomState` 是**会话层权威数据**（服务端持有、广播），**不进 Model**；各端 UI 订阅消息刷新，不自己推断。
+- **做什么**：
+  - `RoomState` 完成：固定 4 槽；Host 占 PlayerID 1；客户端连上后由服务端分配最小空闲 PlayerID；空槽标记为"待加入 / AI"；
+  - 消息：`RoomStateMsg`（服务端→所有：完整槽位表）与"你是 PlayerID X"（可含在消息里）；
+  - 客户端收到后写入 `GameSession.MyPlayerId`，并用昵称标记"本机玩家"；
+  - `RoomPanel` 绑定显示 4 行（昵称 / 角色 / 就绪 / "我"标记）。
+- **验收**：A 建房间、B/C 加入 → 三端 RoomPanel 显示一致的槽位表，各自标出"我"。
+- **不做**：就绪与开局（NET-4/5）、掉线处理。
+
+---
+
+
+### NET-3 补充一：通用交互回路（所有房间控件都按这个走）
+
+**UI 不直接改状态、也不做"本地先改"**，一律走下面这条回路：
+
+1. UI 控件按下 → 组一条"意图消息"（C→S）→ `NetworkClient.Send(msg)`；
+2. 服务端 handler：用 `conn.connectionId` 找到该连接的槽位 → **校验合法性**（这是你的槽位吗？该状态允许改吗？）→ 修改服务端权威槽位表；
+3. 服务端 `NetworkServer.SendToAll(RoomStateMsg)` 广播**整张槽位表**；
+4. 所有端（**包括操作者自己**）收到 `RoomStateMsg` → 刷新 UI。
+
+> 为什么要"等广播"而不是本地直接改：UI 只有一份事实来源（服务端），否则客户端会和服务端不一致（例如两个玩家同时抢同一个角色/槽位）。
+
+**NET-3 涉及到的控件**：
+- `btnClose`（离开房间）：客户端断开（Host 用 `StopHost`，Client 用 `StopClient`）→ 服务端 `OnServerDisconnect` 释放槽位并广播 → 各端回 BeginPanel；
+- `btnReady` / `btnCancel`：属于 NET-4（就绪），本卡可以先禁用/隐藏，但**回路与上面完全一样**（`SetReadyMsg`）。
+
+### NET-3 补充二：房主初始槽位时序（房主不是特例）
+
+```
+房主点[创建房间] → NetworkManager.StartHost()
+   → OnStartServer（注册服务端 handler：PlayerNameMsg）
+   → OnStartClient（注册客户端 handler：PlayerIdMsg / RoomStateMsg）
+   → Host 自身也作为客户端触发 OnClientConnect
+   → 客户端发 PlayerNameMsg（昵称）
+   → 服务端分配 1 号槽 → 单发 PlayerIdMsg + 广播 RoomStateMsg
+   → 房主 RoomPanel 显示"玩家1：<昵称>（我）"
+```
+
+**要点**：房主不需要单独的分配代码，它和普通客户端走**同一条**"上报昵称 → 分配 → 广播"链路（前提是 `OnStartServer/OnStartClient` 里已注册 handler，再在 `OnClientConnect` 里发昵称）。
+
+### NET-3 补充三：断开必须释放槽位
+
+`OnServerDisconnect(conn)` 里：按 `conn.connectionId` 找到对应槽位 → 清空（名字清空、`slotConns = -1`）→ `NetworkServer.SendToAll(RoomStateMsg)`。
+否则槽位会泄漏（玩家退出后房间永远显示占位，且新玩家无法加入）。
+---
+
+
+## NET-3.5：配置统一由 ConfigManager 单例提供
+
+**决定**：新建一个**只读**配置单例 `ConfigManager`，统一提供 ScriptableObject 配置（角色 / 单位 / 城市 / 局参数），替代"配置只在 GameController 里注入"的做法。
+
+- **放哪**：`Config/ConfigManager.cs`（与 SO 同层，属于基础设施/服务层）。它是"服务"，允许全局单例访问。
+- **提供什么**（只读查询）：
+  - 角色列表（给房间 Dropdown 用：id + 名称 + 描述）
+  - 单位 / 城市配置（给启动装配用）
+  - 局参数（seed / 地图宽高）
+- **SO 引用怎么来**：在 BeginScene 的常驻对象上挂一个序列化引用指向 `GameCfg`，在 `Awake` 里 `ConfigManager.Instance.Init(gameCfg)`（避免用 `Resources.Load` 把资源路径写死）。
+- **红线**：**Model 不允许通过 ConfigManager 拿配置**。启动时仍由 Controller 把 SO 转成纯 C# 的 `UnitInfo / CityInfo / CharacterInfo / GameSetUpInfo` 再注入 `GameInfo`；ConfigManager 只服务 ①启动装配 ②UI 显示。
+- **谁在用**：Controller（启动装配）、UI（Dropdown 选项、名字显示）；Model 不引用它。
+
+---
+
+## NET-4：角色与就绪（含角色配置注入）
+
+**目标**：玩家在房间用 Dropdown 选角色（默认随机），所有人点就绪。
+
+- **流程意义**：这是"开局前最后一步配置"——角色（文明/领袖）与就绪状态都由这里确定。全人类就绪是开局的触发条件。
+- **架构意义**：角色属于**开局配置数据**：`CharacterCfg`（Config 层，ScriptableObject）→ `CharacterInfo`（Model 层，纯 C#）→ 注入 `GameInfo`；UI 的 Dropdown 数据来自 **Controller 暴露的选项列表**（UI 不碰 Config/Model）。就绪是会话状态，不进 Model。
+- **做什么**：
+  - 新增 `CharacterCfg`（Id / Name / Description，特性字段预留）+ `GameCfg.characterCfgs`；
+  - 新增 `CharacterInfo` + `GameInfo.CharacterInfos`；`InitGameInfo()` 里完成注入；
+  - 服务端为每个槽位**随机分配未占用的角色**；`SetCharacterMsg` 改角色（服务端校验唯一性）；`SetReadyMsg` 切换就绪；
+  - `RoomPanel`：Dropdown（角色）+ 就绪按钮 + 状态刷新；只有人类槽位参与就绪判定。
+- **验收**：改角色/就绪在两端实时同步；选已被占用的角色被拒；AI 槽位不需要就绪。
+- **不做**：角色特性效果（文明加成）——放联机完成之后。
+
+---
+
+
+### NET-4 执行要点（补）
+
+**消息（都走 NET-3 的通用交互回路）**
+- `SetCharacterMsg { int characterId }`：C→S，请求改角色；
+- `SetReadyMsg { bool ready }`：C→S，切换就绪；
+- 服务端改完权威槽位表后，统一用 `RoomStateMsg` 广播整表（不新增下行消息）；
+- 可选 `RoomErrorMsg { string reason }`：服务端拒绝时回给该客户端（如"角色已被选择"）。
+
+**服务端规则**
+1. 分配槽位时**随机挑一个未被占用的角色**（默认随机），写入该槽；
+2. 收到 `SetCharacterMsg`：校验①是自己这条连接的槽位②该角色未被别的槽位占用③该玩家未就绪；通过则改、否则回 `RoomErrorMsg`；
+3. 收到 `SetReadyMsg`：只允许人类槽位切换；
+4. 每次改动后 `NetworkServer.SendToAll(RoomStateMsg)`；
+5. **全人类就绪判定**：只统计人类槽位（AI 槽位不参与）——满足则记一个"可开局"状态（真正的开局/场景加载在 NET-5）。
+
+**客户端 / UI**
+1. 4 行 UI 各自有：名字文本、角色 Dropdown、就绪图标（RoomPanel 已有这些控件）；
+2. Dropdown 选项来自 `ConfigManager` 的角色列表（初始化时填一次）；
+3. **只有自己那行可交互**：自己 = `MyPlayerId` 对应槽位；其他行 Dropdown/按钮禁用（显示别人选的）；
+4. Dropdown 改变 → `NetworkClient.Send(SetCharacterMsg)`；收到 `RoomStateMsg` 后**以服务端数据回填**（不做本地乐观更新）；
+5. `btnReady` / `btnCancel` → `SetReadyMsg(true/false)`；就绪状态由广播回来的 `RoomStateMsg.Ready` 决定图标颜色；
+6. 收到 `RoomErrorMsg` → 弹提示（简单 `Debug.Log` 或面板文字），并把 Dropdown 回退到服务端当前值。
+
+**与 SlotInfo 的关系（你之前的判断是对的）**
+`SlotInfo`（Model）应当在**开局时**由服务端从房间槽位表（玩家 id + 昵称 + 选中的角色）组装成 `GameSetUpInfo.Slots`，随 `GameStart` 下发后注入 Model —— **不再来自配置文件**。
+---
+
+## NET-5：开局（GameStart 广播 + 场景加载）
+
+**目标**：全人类就绪 → 服务端广播开局 → 所有端从**同一个起点**开始对局。
+
+- **流程意义**：房间到对局的转折点。所有客户端必须拿到同一份开局数据（seed、尺寸、最终槽位表、角色分配），否则后续没法同步。
+- **架构意义**：开局数据 = `GameSetUpInfo`（Model 的输入，纯数据）；**地图不传**，因为 `MapGenerator` 由 seed 确定性生成，各端本地生成结果一致。场景加载与 `GameController.StartGame()` 属于 Controller 职责。
+- **做什么**：
+  - 服务端：空槽填 AI、AI 随机角色、生成 seed、组装最终 `GameSetUpInfo` → 广播 `GameStartMsg`；
+  - 各端：写入 `GameSession`（IsServer / MyPlayerId / 槽位控制者表）→ 加载 GameScene → `StartGame(setupInfo)`；
+  - **替换现有路径**：现在 `GameController` 从 `gameCfg.gameSetUpCfg` 读开局配置；改为从"会话/开局数据"读（调试单机 = Host + 全 AI 槽，仍走同一条路）。
+- **验收**：两端进入游戏后，地图、初始单位、城市、回合数完全一致；HUD 显示自己的昵称/回合。
+- **不做**：命令同步（NET-6）。
+
+---
+
+
+### NET-5 执行要点（补）
+
+**第 0 步（先修编译）**：`GameSession` 已删掉 `isServer / myPlayerId`，但 `GameController` 里还在用它们（L68/L69/L318）→ 改为：
+- `MyPlayerId => NetworkMgr.Instance.MyPlayerId`
+- `IsMyTurn => NetworkMgr.Instance.MyPlayerId == state.CurrentPlayer`
+- AI 判定：`NetworkServer.active && session.GetControllerType(state.CurrentPlayer) == ControllerType.AI`
+
+**开局数据（一条消息带齐）**
+把现有 `StartGameMsg` 扩展为携带开局数据（或新增 `GameSetupMsg`）：
+- `seed`、`mapWidth`、`mapHeight`
+- 最终槽位表：`playerId / characterId / name`（**给 Model 的 SlotInfo 用**）
+- 控制者类型表：`playerId → Human / AI`（**给 GameSession 用，不进 Model**）
+
+**服务端流程**
+1. 判定"所有人类槽位 Ready"（复用/改造现有 `StartGameMsg{AllReady}` 逻辑）；
+2. 空槽填 AI：`SlotData.Reset()` 已提供 AI 默认值；为 AI 随机分配**未被占用**的角色；
+3. 服务端生成 `seed`（本卡先用服务端随机；以后可做成"房主可填"）；
+4. 组装 `GameSetUpInfo`（纯数据：seed/宽高 + `List<SlotInfo>`）；
+5. 组装控制者映射（客观的 Human/AI，不含 Local/Remote）；
+6. `NetworkServer.SendToAll(GameStartMsg{...})`；
+7. `ServerChangeScene("GameScene")`（Mirror 统一切场景；**GameScene 必须加入 Build Settings**）。
+
+**各端流程（含服务端自己）**
+1. 收到 `GameStartMsg` → **缓存到 NetworkMgr**（例如 `StartData` 字段）；
+2. 场景切换完成后，`GameController` 用缓存数据开局：
+   - `GameInfo.GameSetUpInfo = new GameSetUpInfo(seed, w, h, slotInfos)`（**不再读本地 GameSetUpCfg/ConfigMgr**）
+   - 填 `GameSession.PlayerType`：**自己 → HumanLocal**，其他人类 → HumanRemote，AI → AI（视角相关的转换只在本地做）
+   - 然后 `StartGame()`（建 Model + 装配 View，沿用现有流程）
+3. **时序兜底**：若场景已加载但缓存还没到（消息晚到），GameController 在 Update 里等 `HasStartData` 再开局，避免空数据开局。
+
+**关键点**
+- `seed` 由服务端唯一决定 → 各端地图一致，**不传地图数据**；
+- `ControllerType` **绝不进 Model**（Model 只拿 SlotInfo：playerId/characterId/name）；
+- AI 只在服务端跑（`NetworkServer.active` 守卫）；客户端的映射仅用于显示与锁定自己的输入。
+---
+
+## NET-6：命令中继（行动由权威执行）
+
+**目标**：玩家操作只发"意图"给服务端，由服务端校验并执行。
+
+- **流程意义**：没有这一步，两个客户端各自执行自己的操作 → **世界立刻分叉**（这是当前联机状态的必经阶段）。有了它，行动才有唯一结果。
+- **架构意义**：`IOrderSink.RequestXxx` 已经是唯一入口（UI 不构造 Order）；联机只是把"本地执行"换成"发服务端执行"。校验点：`order.PlayerId == 该连接绑定的玩家`（防冒名）+ `== state.CurrentPlayer`（防抢回合）。AI 仍在服务端跑（已加 `IsServer` 守卫）。
+- **做什么**：
+  - Order → 网络消息（ID 化已完成，可直接序列化）；
+  - 客户端：`RequestXxx` → 发消息；服务端：收到 → `SubmitOrder` → 执行 → 回执（可选）；
+  - 拒绝时回执错误原因（供 UI 提示）。
+- **验收**：客户端移动/攻击/建城/造兵均由服务端执行；伪造 PlayerId 的命令被拒；两端状态一致（依赖 NET-7 显示）。
+- **不做**：状态下行（NET-7）。
+
+---
+
+## NET-7：状态同步与表现（别人的行动你能看到）
+
+**目标**：服务端执行后，把结果同步给所有客户端并正确播放表现。
+
+- **流程意义**：多人对局的可见性——A 的移动/战斗/建城，B 必须立刻看到；回合推进也要同步。
+- **架构意义**：服务端广播**状态快照 + 提示 DTO**（docs/tech.md §10 约定）；客户端 `ApplySnapshot`（覆盖本地 Model 状态）+ `PlayHint`（复用现有 View 的动画/刷新逻辑）。**客户端不执行规则**。
+- **做什么**：
+  - 序列化：GameState（地图 seed/尺寸、单位、城市、玩家、回合、当前玩家）→ 广播；客户端反序列化后刷新 View；
+  - 广播时机：每个命令执行后（简单）或回合末批量（更省）；
+  - 提示 DTO：把"发生了什么"（移动路径 / 战斗结果 / 建城 / 造兵）发给客户端用于播放动画——客户端不重算规则。
+- **验收**：A 动单位 → B 立刻看到（含动画）；战斗/城市易主/回合数同步；HUD 一致。
+- **不做**：断线重连、增量同步优化（可后补）。
+
+---
+
+
+## NET-6 + NET-7 最小版：局内同步（必须一起做）
+
+> 只做上行（NET-6）会看不到结果；只做下行（NET-7）没有数据源。所以这两步合成一次实现，先做"能用"的最小版，动画/增量优化留后面。
+
+### 现状（已确认）
+- 各端用同一个 `MapId/seed` 进入 GameScene，各自 `StartGame()` 建了**自己的一份 Model**；
+- `GameController.SubmitOrder` 目前**在本地直接执行** → 每个客户端各跑各的，一操作就分叉。
+
+
+### NET-6 前置概念：Order 类 与 网络消息 是两回事
+
+- **Order 类**（`Model/Orders/*Order`）：进程内命令对象（class + 继承 `BaseOrder`），UI/Controller/AI 用它表达"我想做什么"。**保留不变**。
+- **网络消息**（Mirror `NetworkMessage`）：必须是 **struct** 且类型在编译期静态已知，**不支持多态 class** → 所以 Order 类**不能直接发**。
+- **翻译层**（本卡要写）：
+  - 客户端：`Order 类 → OrderMsg(struct，type 枚举 + 扁平字段) → NetworkClient.Send`
+  - 服务端：收到 `OrderMsg` → 按 type **译回对应 Order 类** → 交给权威 GameState 执行
+- 两种译法：①**一条扁平 OrderMsg**（推荐，注册一次 handler）；②每种 Order 一条消息（类型清晰但要注册 N 个 handler）。
+> **修正（2026-09-18）**：`Model/Orders/*Order` **保留并继续使用** —— 它们是进程内命令对象（UI/AI/单机 Host 共用 `SubmitOrder` 统一入口，类型安全、便于回放）。需要补的只是**网络边界的一层翻译**：
+> - 客户端：`Order 类 → OrderMsg(struct)` → `NetworkClient.Send`（不本地执行）；
+> - 服务端：`OrderMsg → 译回 Order 类` → 交给权威 GameState 执行；
+> - 推荐"**一条扁平 OrderMsg + 一个集中翻译器**"（而不是每种 Order 各写一条消息）。
+> 三个注意点不变：①来源校验用 `conn` 反查槽位 playerId；②字段有效性按 type 约定并校验；③失败单发回执、成功广播全量快照。
+### NET-6：命令上行（客户端只发意图）
+
+**消息**：`OrderMsg`（扁平结构，一条消息承载所有命令类型）
+- `type`（Move / AttackUnit / AttackCity / FoundCity / BuildUnit / EndPhase）
+- `playerId`、`unitId`、`cityId`、`targetQ`、`targetR`、`unitType`
+- 说明：Order 有子类，网络消息用**扁平字段**最省事；坐标用两个 int，避免额外序列化不确定性。
+
+**客户端侧**：`SubmitOrder` 加分支
+- `NetworkServer.active`（Host/服务端）→ 本地执行（原逻辑）+ 广播快照；
+- 否则（Client）→ **只发 `OrderMsg`，不本地执行**（关键：一执行就分叉）。
+
+**服务端侧**：`NetworkMgr.OnStartServer` 注册 `OrderMsg` handler
+- 先校验来源：`msg.playerId` 必须等于**该连接所在槽位的 PlayerId**（防冒名）；
+- 再把 `OrderMsg` 转成对应 Order 对象 → 交给 GameController 执行（需要一个服务端执行入口，如 `ExecuteOrderFromServer`）；
+- 执行成功 → 广播快照（NET-7）；失败 → 可回执错误（可选）。
+
+**AI**：仍在服务端直接走本地执行路径（AiOrders 已经在 GameController 内部），执行后同样广播快照。
+
+### NET-7 最小版：状态下行（快照覆盖）
+
+**消息**：`GameSnapshotMsg`
+- `turnNumber`、`currentPlayer`
+- 单位数组：`id / owner / type / q / r / hp / movementLeft`
+- 城市数组：`id / owner / q / r / hp / production`
+
+**服务端**：每次命令执行成功（或回合末）→ 组快照 → `NetworkServer.SendToAll`。
+
+**客户端**：收到快照 → `ApplySnapshot`：
+1. 用快照**覆盖本地 Model**（清空 Units/Cities → 按快照重建；回合/当前玩家一并覆盖）；
+2. **全量重建 View**（先销毁现有单位/城市 GameObject，再按 Model 重建）——单位数量少，demo 够用；增量/动画以后再做；
+3. 快照应用后，HUD/选择状态按新 Model 刷新（选中单位若已不存在则清空选择）。
+
+**进阶（本卡不做）**：`HintMsg`（移动路径/战斗结果）用于播放动画；增量同步。
+
+### 验收
+- [ ] A 移动单位 → B 端立刻看到位置变化（先不做动画也可以）
+- [ ] 战斗、建城、造兵、城市易主、回合数都能同步
+- [ ] B 自己操作 → A 端也能看到
+- [ ] AI（服务端）行动 → 所有客户端都能看到
+- [ ] 客户端无法操作非自己回合/非自己的单位（服务端校验兜底）
+- [ ] 两台客户端跑同一局，长时间操作后状态不漂移
+- [ ] 提交：`feat: order relay and snapshot sync`
+
+### 附带风险（已用约定解决）
+`GameController.InitGameInfo` 对每个槽位查 `StaticInfo.CharacterInfos[slot.CharacterId]`；空槽/AI 槽的 CharacterId = 0。
+**约定**：`CharacterCfg.Id` 从 0 开始且连续，**0 号 = 随机/默认角色** → 查表不会 KeyNotFound。
+待办（独立功能，非本卡）：给 AI 槽**随机分配且不与人类重复**的角色（当前都落 0 号）。
+---
+
+## NET-8（可选）：掉线接管与重连
+
+**目标**：远端玩家掉线时由 AI 接管该槽位，避免对局中断。
+
+- **流程意义**：稳定性与演示体验（掉线不炸局）。
+- **架构意义**：只改服务端的"槽位→控制者"映射（HumanRemote → AI），Model 与命令通道不变——正是"控制者映射独立于 Model"的红利。
+- **做什么**：监听连接断开 → 该槽位控制者改为 AI → 广播 RoomState/提示；若该玩家回到房间可选择归还控制权（可选）。
+- **验收**：强制关闭一个客户端 → 其余端看到"该玩家由 AI 接管"，对局继续。
+- **不做**：断线续传（重连后恢复自己控制权可作为增强）。
+
+---
+
+## 附：每张卡与架构层的对应
+
+| 卡 | 主要落点 | 是否碰 Model |
+|---|---|---|
+| NET-1 登录昵称 | Controller/Network（本地资料） | 否 |
+| NET-2 连接 | UI 直调 NetworkManager.singleton（教程式） | 否 |
+| NET-3 房间槽位 | Controller/Network（RoomState）+ UI | 否 |
+| NET-4 角色/就绪 | Config → Model（CharacterInfo 注入）+ Controller/UI | 仅注入配置数据 |
+| NET-5 开局 | Controller（场景加载/StartGame）+ Model 输入（GameSetUpInfo） | 是（只读输入） |
+| NET-6 命令中继 | Controller（SubmitOrder 入口） | 否（走既有 Order） |
+| NET-7 状态同步 | Model/Serialization + Controller + View | 是（序列化快照） |
+| NET-8 掉线接管 | Controller/Network（控制者映射） | 否 |

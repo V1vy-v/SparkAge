@@ -39,7 +39,7 @@ namespace SparkAge.View.UI
             return panel as T;
         }
 
-        public void HideMe<T>() where T : BasePanel
+        public void HidePanel<T>() where T : BasePanel
         {
             string panelName = typeof(T).Name;
             if (panelDic.TryGetValue(panelName, out BasePanel panel))

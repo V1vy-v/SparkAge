@@ -1,0 +1,86 @@
+using Mirror;
+using SparkAge.Model.Hex;
+using SparkAge.Model.Units;
+
+namespace SparkAge.Controller.Network
+{
+    #region 一、联机房间消息
+    //客户端->服务端
+    public struct PlayerNameMsg : NetworkMessage { public string Name; }
+    public struct PlayerReadyMsg : NetworkMessage { public bool Ready; }
+    public struct PlayerCharacterMsg : NetworkMessage { public int CharacterId; }
+    public struct SelMapMsg : NetworkMessage { public int mapId; }
+    //服务端->客户端
+    public struct PlayerIdMsg : NetworkMessage { public int PlayerId; }
+    //服务端->所有
+    public struct RoomStateMsg : NetworkMessage { public SlotData[] slots; }
+    public struct GameMapMsg : NetworkMessage { public int mapId; }
+    public struct StartGameMsg : NetworkMessage { public bool AllReady; public SlotData[] Slots; public int MapId; }
+    public struct SlotData
+    {
+        public int PlayerId;
+        public string Name;
+        public int CharacterId;
+        public bool Ready;
+        public bool isAI;
+        //为人类玩家分配
+        public void Assign(string name)
+        {
+            Name = name;
+            CharacterId = 0;
+            Ready = false;
+            isAI = false;
+        }
+        //重置槽位，分配给Ai
+        public void Reset()
+        {
+            Name = "AI";
+            CharacterId = 0;
+            Ready = true;
+            isAI = true;
+        }
+    }
+    #endregion
+
+    #region 二、游戏局内消息
+    //客户端->服务端
+    public enum OrderType
+    {
+        MoveUnit,
+        AttackUnit,
+        AttackCity,
+        BuildUnit,
+        FoundCity,
+        EndPhase
+    }
+    public struct OrderMsg : NetworkMessage
+    {
+        //必填
+        public OrderType Type;
+        public int PlayerId;
+        //根据类型填
+        public int AggressiveUnitId;
+        public int AggressiveCityId;
+        public UnitType PassiveUnitType;
+        public int PassiveUnitId;
+        public int PassiveCityId;
+        public HexCoord Target;
+    }
+    //服务端->客户端
+    public struct TipMsg : NetworkMessage
+    {
+        public string Tips;
+    }
+    //服务端->所有
+    public struct GameSnapShotMsg : NetworkMessage
+    {
+        //游戏状态快照
+        public int turnNumber;
+        public int curPlayer;
+        //单位
+
+        //城市
+
+    }
+    #endregion
+}

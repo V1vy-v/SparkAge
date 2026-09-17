@@ -117,3 +117,10 @@ BuildUnitEvent · UnitMoveEvent · FoundCityEvent · AttackUnitEvent · AttackCi
 
 - 所有 Unit/City 创建统一走 Model 工厂，**在创建处分配自增 ID**（当前开局两个单位未分配 ID，均为 0，必须修）；
 - `TryGetUnit` / `TryGetCity` 必须**按 ID 线性查找**，**不得用列表下标**（单位阵亡、移民被消耗后下标错位，会取到错误对象）。
+
+
+---
+
+## 附：联机执行卡（NET-1 ~ NET-8）
+
+联机部分的逐卡执行计划（含每步在游戏流程与架构中的意义）见 **docs/networking.md**。本节 §9 只保留选型与总体模式，具体步骤以该文档为准。

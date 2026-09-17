@@ -29,13 +29,13 @@ namespace SparkAge.View
         /// <summary>
         /// 摄像机位置初始化：地图中央
         /// </summary>
-        public void Init(Vector3 center, Vector3 topRight, Vector3 bottomLeft)
+        public void Init(Vector3 center, Vector3 topRight, Vector3 bottomLeft, Vector3 target)
         {
             this.center = center;
             this.topRight = topRight;
             this.bottomLeft = bottomLeft;
 
-            target = center;
+            this.target = target;
             transform.rotation = Quaternion.Euler(pitch, 0, 0);
             transform.position = target - transform.forward * distance;
         }

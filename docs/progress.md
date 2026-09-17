@@ -66,3 +66,8 @@
 
 
 
+
+
+## 联机开发计划（NET-1 ~ NET-8）
+
+详见 docs/networking.md。当前状态：UI 面板（Begin/Login/Connect/Room）已拼好；NetworkSession 与 RoomState 为空壳；GameController 仍从 GameCfg 读取开局配置。下一步从 NET-1（登录昵称）开始。

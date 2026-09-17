@@ -1,38 +1,41 @@
+using Mirror;
+using SparkAge.Controller.Network;
+using TMPro;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace SparkAge.View.UI
 {
     public class BeginPanel : BasePanel
     {
-        public Button btnStart, btnSetting, btnAbout, btnQuit;
+        [SerializeField] TextMeshProUGUI txtNickName;
+        public Button btnSetUp, btnJoin, btnSetting, btnQuit;
 
         protected override void Init()
         {
-            btnStart.onClick.AddListener(() =>
+            btnSetUp.onClick.AddListener(() =>
             {
-                //保存数据
-
-                //隐藏自己
-                HideMe();
-                //异步切换场景
-                var ao = SceneManager.LoadSceneAsync("GameScene");
-                //初始化
-
+                //创建房间
+                NetworkMgr.Instance.StartHost();
+            });
+            btnJoin.onClick.AddListener(() =>
+            {
+                //加入房间->输入服务器地址（连接界面）
+                UIManager.Instance.ShowPanel<ConnectPanel>();
             });
             btnSetting.onClick.AddListener(() =>
             {
-
-            });
-            btnAbout.onClick.AddListener(() =>
-            {
-
+                UIManager.Instance.ShowPanel<SettingPanel>();
             });
             btnQuit.onClick.AddListener(() =>
             {
                 Application.Quit();
             });
+        }
+        public override void ShowMe()
+        {
+            base.ShowMe();
+            txtNickName.SetText(LocalPlayerProfile.NickName);
         }
     }
 }

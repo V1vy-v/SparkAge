@@ -1,8 +1,9 @@
+using SparkAge.Config;
 using SparkAge.Model.Cities;
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
 using SparkAge.Model.Players;
+using SparkAge.Model.StaticInfos;
 using SparkAge.Model.Units;
 using System;
 using System.Collections.Generic;
@@ -15,10 +16,11 @@ namespace SparkAge.Model
     /// </summary>
     public class GameState
     {
-        GameInfo gameInfo;//配置数据
-        UnitInfo GetUnitInfo(UnitType type) => gameInfo.UnitInfos[type];//单位配置访问器
-        CityInfo GetCityInfo(int i) => gameInfo.CityInfos[i];//城市配置访问器
+        StaticInfo staticInfo;
+        UnitInfo GetUnitInfo(UnitType type) => staticInfo.UnitInfos[type];//单位配置访问器
+        CityInfo GetCityInfo(int i) => staticInfo.CityInfos[i];//城市配置访问器
 
+        GameInfo gameInfo;//本局设置
         MapData map;//地图数据
         public MapData Map => map;
         List<PlayerState> Players;//所有玩家数据
@@ -34,17 +36,21 @@ namespace SparkAge.Model
         int currentPlayer;//当前可操作的玩家
         public int CurrentPlayer => currentPlayer;
 
-        public GameState(GameInfo gameInfo)
+        public GameState(GameInfo gameInfo, StaticInfo staticInfo)
         {
-            //配置数据
+            //全局配置
+            this.staticInfo = staticInfo;
+            //本局配置数据
             this.gameInfo = gameInfo;
+
             //地图、玩家数据、单位数据、城市数据
-            this.map = MapGenerator.Generate(gameInfo.GameSetUpInfo.MapWidth, gameInfo.GameSetUpInfo.MapHeight, gameInfo.GameSetUpInfo.Seed);
+            map = MapGenerator.Generate(gameInfo.MapInfo.MapWidth, gameInfo.MapInfo.MapHeight, gameInfo.MapInfo.Seed);
             Players = new List<PlayerState>();
-            for(int i = 0; i < gameInfo.GameSetUpInfo.Slots.Count; i++)
+            foreach(var player in gameInfo.PlayerInfos)
             {
-                Players.Add(new PlayerState(gameInfo.GameSetUpInfo.Slots[i].PlayerID));
+                Players.Add(new PlayerState(player.Id, player.Name, player.CharacterInfo));
             }
+
             units = new List<Unit>(200);
             cities = new List<City>(100);
             //当前回合数、当前玩家、当前单位分配ID、当前城市分配ID
@@ -53,7 +59,7 @@ namespace SparkAge.Model
             nxtUnitID = 0;
             nxtCityID = 0;
 
-            UnitInfo info = gameInfo.UnitInfos[UnitType.Settler];
+            UnitInfo info = staticInfo.UnitInfos[UnitType.Settler];
             //初始化每个玩家的初始状态
             HexCoord? spawnPoint = FindSpawnPoint(map.Center);
             Unit unit = new Unit(1, (HexCoord)spawnPoint, info, info.Movement);

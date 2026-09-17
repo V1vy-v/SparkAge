@@ -1,8 +1,8 @@
 using NUnit.Framework;
 using SparkAge.Model;
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Map;
+using SparkAge.Model.StaticInfos;
 using SparkAge.Model.Units;
 
 public class GameStateTests
@@ -14,7 +14,7 @@ public class GameStateTests
     {
         var map = new MapData(5, 5);
         foreach (var (c, t) in tiles) map.Tiles[c].Type = t;
-        return new GameState(new GameInfo() { });
+        return new GameState(new GameInfo() , new StaticInfo());
     }
 
     [Test]

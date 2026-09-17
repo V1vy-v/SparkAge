@@ -183,3 +183,23 @@
 - Result = 本地表现数据（允许引用）；广播 = 整状态快照 + 少量"表现提示 DTO"；客户端 ApplySnapshot + PlayHint 复用同一套 View 方法。
 - PlayerId 由 SubmitOrder 入口打标；网络/回放收到的命令不得覆盖。
 - 实现约束：Unit/City 创建统一分配自增 ID（开局两单位当前 ID 均为 0）；TryGetUnit/TryGetCity 改按 ID 线性查找，禁用列表下标。
+
+
+22. **联机实现风格定为教程式（2026-09）**：联机部分直接使用 Mirror 教程写法（UI 调 NetworkManager.singleton.StartHost/StartClient），不做 NetworkSession 适配层、不做 NetworkBootstrap、不拆 UI 接口；封装推迟到 NET-6/NET-7（命令上行/状态下行）需求明确后再做。跨场景用 NetworkManager 的 Don't Destroy On Load。详见 docs/networking.md。
+
+23. **昵称改为不持久化（2026-09）**：LocalPlayerProfile 只存内存（静态字段），每次启动弹登录输入昵称。原因：PlayerPrefs 在同机多开时被多个客户端实例共享（按公司名/产品名存于系统），会导致昵称与首次判断串味；不持久化也让多开测试各自独立。以后要做"记住昵称"再引入持久化。
+24. **Mirror 静态连接事件会被重置（2026-09）**：`NetworkClient.OnConnectedEvent / OnDisconnectedEvent / OnErrorEvent` 是静态字段，`StartClient/StartHost` 时被 `= null` 清空（源码在 Assets/Mirror/Core/NetworkClient.cs L102-104、L2053-2055），因此**不能提前订阅**。连接成功/断开/失败统一改用 NetworkManager 虚方法：`OnClientConnect()` / `OnClientDisconnect()` / `OnClientError(TransportError, string)`，服务端接入用 `OnServerConnect(NetworkConnectionToClient)`。UI 切面板由这些回调驱动。
+25. **配置由 ConfigManager 单例统一提供（2026-09）**：新建只读配置单例 ConfigManager（Config 层），提供角色/单位/城市/局参数；SO 引用由 BeginScene 常驻对象序列化注入（不用 Resources.Load）。红线：Model 不通过它拿配置——启动时由 Controller 转成纯 C# Info（UnitInfo/CityInfo/CharacterInfo/GameSetUpInfo）注入 GameInfo；ConfigManager 只服务启动装配与 UI（如角色 Dropdown）。
+26. **SlotCfg 删除 / SlotInfo 改为运行时产出（2026-09）**：槽位不属于配置。GameSetUpCfg 只保留 Seed/MapWidth/MapHeight；房间槽位由服务端 RoomState 在运行时维护（玩家 id + 昵称 + 角色 + 就绪），开局时组装成 GameSetUpInfo.Slots 下发给各端，再注入 Model。
+27. **两个"Session"分清（2026-09）**：我已删除的是 `Controller/Network/NetworkSession.cs`（我加的 Mirror 适配层，作废）。`Controller/GameSession.cs`（对局上下文）**保留**，但职责收窄：只保留「playerId → ControllerType（人/AI）」这条映射，`MyPlayerId / IsServer` 改为转发 `NetworkMgr.MyPlayerId` / `NetworkServer.active`，不再各自存一份。数据来源：NET-5 开局时由服务端根据房间槽位（人类）+ 开局填充的 AI 槽位生成，随 GameStart 下发后填充；**该映射不能进 Model（红线），也不宜塞进 NetworkMgr（传输层会越来越胖）**。否则 AI 判定（GameController 里 `GetControllerType(...) == AI`）会因映射为空而失效。
+28. **MyPlayerId 合并方案（2026-09）**：`GameSession.myPlayerId` 与 `NetworkMgr.MyPlayerId` 是同一个概念（服务端分配的玩家号），必须只留一份真值 —— 保留 `NetworkMgr.MyPlayerId`（由 PlayerIdMsg 赋值），`GameSession` 的 `isServer / myPlayerId` 两个字段删除（改用 NetworkServer.active 与 NetworkMgr.MyPlayerId 转发/直读）。GameSession 只保留 `playerId → ControllerType`（人/AI）映射，由 NET-5 开局时填充。现状风险：GameSession 硬编码 myPlayerId=1，第二个客户端提交的命令 PlayerId 会错；且 PlayerType 为空导致 `GetControllerType` 恒为 WrongType → AI 回合永不执行。
+## 联机房间 Dropdown 首次刷新错误（2026-09-17）
+- 已确认不是服务端槽位数据或 connectionId 分配错误。RoomPanel 被 OnPlayerIdMsg -> ShowPanel<RoomPanel>() 实例化并激活时，OnEnable 先订阅 RoomUpdateEvent；同一网络更新内紧接着到达的 RoomStateMsg 会在 Start -> InitAllDropdowns() 之前触发 Refresh。Refresh 此时读到的是预制体自带的 3 个 Option，因此日志出现 options=3。随后 InitAllDropdowns() 的 ClearOptions() 会把 dropdown 的 value 重置为 0，再创建正确的 4 个角色选项，但没有重放已经收到的权威槽位，所以首次进房显示第 0 项。下一次 RoomStateMsg（点击按钮/选择角色触发广播）再刷新时已变为 options=4，显示恢复正常。
+- 修复原则：让 Refresh 在读取 dropdown 前保证选项和自身交互控件已完成初始化；初始化完成后主动用 NetworkMgr.Instance.Slots 重放一次权威槽位。不要依赖 Start 相对首个网络消息的执行顺序。
+- 长期建议：Dropdown 的 value 是选项下标，槽位中的 CharacterId 是配置 ID；两者应通过角色配置列表显式映射，不能永久假设 Id == index。
+
+29. **局内同步最小版（NET-6+7 合并，2026-09）**：客户端 SubmitOrder 只发 OrderMsg（不本地执行）；服务端注册 OrderMsg handler，校验来源（conn→槽位 PlayerId）后执行并广播 GameSnapshotMsg；客户端 ApplySnapshot 覆盖本地 Model + 全量重建 View（先不做动画/增量）。附带风险：InitGameInfo 对空槽/AI 槽（CharacterId=0）查角色表可能 KeyNotFound，需给 AI 槽分配唯一角色或兜底。
+30. **角色 Id 约定（2026-09）**：`CharacterCfg.Id` **必须从 0 开始且连续**；**0 号角色 = 随机/默认角色**（`SlotData.Reset()` 给空槽/AI 槽填 CharacterId=0，靠这条约定兜底，不会出现 CharacterInfos[0] 的 KeyNotFound）。开局时若槽位 CharacterId 为 0，则使用 0 号（当前行为）；"真正的随机分配 + 不与人重复"作为独立功能后续实现。
+31. **Order 类 ≠ 网络消息（翻译层，2026-09）**：`Model/Orders/*Order` 是**进程内命令对象**（class + 继承 BaseOrder），供 UI/Controller/AI 在同一台机器内表达意图；**不能直接当 Mirror 消息发送**，因为 Mirror 的 NetworkMessage 必须是 struct 且类型在编译期静态已知（不支持多态 class）。做法：客户端把 Order 类"译"成扁平 `OrderMsg`（type 枚举 + 通用字段）发送；服务端收到后按 type "译回"对应 Order 类再执行。
+32. **权威 GameState 与客户端副本（2026-09）**：服务端（Host）那份 GameState 是唯一权威、只被服务端写；客户端那份 GameState 是**只读副本**，不执行任何 Order，只接受服务端快照覆盖后刷新视图。落地需要两个通道：①网络层→对局层的执行入口（如 GameController.Instance.ExecuteOrderFromServer）②快照的生成（服务端）与应用（客户端）。另外 GameOverOrder 属权威判定结果，客户端不得发送。
+33. **Order 类保留并使用，网络边界做翻译（2026-09-18，修正前述讨论）**：`Model/Orders/*Order` 是**进程内命令对象**，继续保留 —— UI/AI/单机 Host 都通过 `SubmitOrder(BaseOrder)` 这个统一入口表达意图，好处是每种命令自带字段（类型安全）+ 未来可做回放。**它们不能直接当 Mirror 消息发送**（Mirror 的 NetworkMessage 必须是 struct 且类型编译期静态已知，不支持多态 class），因此只在**网络边界**做一次翻译：客户端 `Order 类 → OrderMsg(struct)` 发送；服务端收到 `OrderMsg → 译回 Order 类` 后交给权威 GameState 执行。推荐"一条扁平 OrderMsg + 集中翻译器"，避免为每种 Order 各写一条消息。

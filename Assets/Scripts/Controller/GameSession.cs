@@ -1,4 +1,5 @@
 using SparkAge.Config;
+using SparkAge.Controller.Network;
 using System.Collections.Generic;
 
 namespace SparkAge.Controller
@@ -12,10 +13,6 @@ namespace SparkAge.Controller
     }
     public class GameSession
     {
-        bool isServer;
-        public bool IsServer => isServer;
-        int myPlayerId;
-        public int MyPlayerId => myPlayerId;
         Dictionary<int, ControllerType> PlayerType = new Dictionary<int, ControllerType>();
         public ControllerType GetControllerType(int playerId)
         {
@@ -24,13 +21,18 @@ namespace SparkAge.Controller
             return ControllerType.WrongType;
         }
 
-        public void Init(GameSetUpCfg cfg)
+        public void Init(SlotData[] slots)
         {
-            isServer = true;
-            myPlayerId = 1;
-            foreach(var slotCfg in cfg.Slots)
+            foreach(var slot in slots)
             {
-                PlayerType[slotCfg.PlayerId] = slotCfg.Type;
+                if (slot.isAI)
+                    PlayerType[slot.PlayerId] = ControllerType.AI;
+                else if(slot.PlayerId != NetworkMgr.Instance.MyPlayerId)
+                    PlayerType[slot.PlayerId] = ControllerType.HumanRemote;
+                else if (slot.PlayerId == NetworkMgr.Instance.MyPlayerId)
+                    PlayerType[slot.PlayerId] = ControllerType.HumanLocal;
+                else
+                    PlayerType[slot.PlayerId] = ControllerType.WrongType;
             }
         }
     }

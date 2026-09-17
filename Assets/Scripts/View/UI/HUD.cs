@@ -1,5 +1,3 @@
-using SparkAge.Controller;
-using SparkAge.Model.Orders;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -8,13 +6,12 @@ namespace SparkAge.View.UI
 {
     public class HUD : BasePanel
     {
-        [SerializeField] TextMeshProUGUI txtProduction, txtTurnNum;
+        [SerializeField] TextMeshProUGUI txtTurnNum, txtCurPlayer, txtMyInfo;
         [SerializeField] Button btnEndTurn;
         
 
         protected override void Init()
         {
-            txtProduction.text = "生产力：0";
             txtTurnNum.text = "当前回合：1";
 
             btnEndTurn.onClick.AddListener(() =>
@@ -23,9 +20,13 @@ namespace SparkAge.View.UI
             });
         }
 
-        public void UpdateHUD(int production, int turnNum)
+        public void InitMyInfo(Model.PlayerInfo info)
         {
-            txtProduction.SetText("生产力：{0}", production);
+            txtMyInfo.SetText("{0}\n" + info.Name + "\n" + info.CharacterInfo.Name, info.Id);
+        }
+        public void UpdateHUD(string name, int turnNum)
+        {
+            txtCurPlayer.SetText("当前玩家：" + name);
             txtTurnNum.SetText("当前回合：{0}", turnNum);
         }
     }

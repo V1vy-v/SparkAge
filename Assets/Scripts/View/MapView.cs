@@ -1,9 +1,6 @@
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
-using SparkAge.Model.GameInfos;
 using SparkAge.Model.Hex;
-using SparkAge.Model.Map;
-using SparkAge.Model.Units;
 using UnityEngine;
 
 namespace SparkAge.View
