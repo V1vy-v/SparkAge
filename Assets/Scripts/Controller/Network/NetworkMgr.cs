@@ -1,10 +1,11 @@
 using Mirror;
-using SparkAge.Config;
 using SparkAge.Model.Orders;
 using SparkAge.View.UI;
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using static SparkAge.Controller.GameController;
 
 namespace SparkAge.Controller.Network
 {
@@ -17,15 +18,23 @@ namespace SparkAge.Controller.Network
         public event Action Disconnected;
         public event Action<string> ConnectFailed;
 
-        //房间界面内容与UI事件
+        //房间界面内容
         int[] slotConns = new int[4];
         SlotData[] slots = new SlotData[4];
         public SlotData[] Slots => slots;
+        int GetPlayerId(int connectionId) => slots[Array.FindIndex(slotConns, id => id == connectionId)].PlayerId;
         int mapId;
         public int MapId => mapId;
         int myPlayerId;
         public int MyPlayerId => myPlayerId;
+        //UI事件
         public event Action<SlotData[]> RoomUpdateEvent;
+        //GameController接口
+        INetworkInput networkInput;
+        public void SetNetworkInput(INetworkInput networkInput) => this.networkInput = networkInput;
+        //消息队列
+        Queue<GameStateDeltaMsg> gameStateDeltaMsgQueue = new();
+        public Queue<GameStateDeltaMsg> GameStateDeltaMsgQueue => gameStateDeltaMsgQueue;
 
 
         public override void Awake()
@@ -43,7 +52,6 @@ namespace SparkAge.Controller.Network
             //初始化map
             mapId = 0;
         }
-
 
         #region 一、消息注册与消息处理
 
@@ -121,7 +129,12 @@ namespace SparkAge.Controller.Network
         //游戏局内消息处理器
         void OnOrderMsg(NetworkConnectionToClient conn, OrderMsg msg)
         {
-
+            BaseOrder order = ToOrder(msg);
+            ExecuteResult result = networkInput.ExecuteOrder(order);
+            if (result.Type == ExecuteResultType.Tip)
+                conn.Send(result.Tip);
+            else
+                NetworkServer.SendToAll(result.GameStateDelta);
         }
 
         #endregion
@@ -134,6 +147,9 @@ namespace SparkAge.Controller.Network
             NetworkClient.ReplaceHandler<RoomStateMsg>(OnRoomStateMsg);
             NetworkClient.ReplaceHandler<StartGameMsg>(OnStartGameMsg);
             NetworkClient.ReplaceHandler<GameMapMsg>(OnGameMapMsg);
+
+            NetworkClient.ReplaceHandler<TipMsg>(OnTipMsg);
+            NetworkClient.ReplaceHandler<GameStateDeltaMsg>(OnGameStateDeltaMsg);
         }
         //联机房间消息处理器
         void OnPlayerIdMsg(PlayerIdMsg msg)
@@ -167,6 +183,21 @@ namespace SparkAge.Controller.Network
             SceneManager.LoadSceneAsync("GameScene");
         }
         //游戏局内消息处理器
+        void OnTipMsg(TipMsg msg)
+        {
+            networkInput.ApplyTip(msg);
+        }
+        void OnGameStateDeltaMsg(GameStateDeltaMsg msg)
+        {
+            if (NetworkServer.active) return;
+            if(networkInput == null)
+            {
+                gameStateDeltaMsgQueue.Enqueue(msg);
+                return;
+            }
+            networkInput.ApplySnapShot(msg);
+        }
+
         #endregion
 
         #endregion
@@ -232,7 +263,7 @@ namespace SparkAge.Controller.Network
         }
         #endregion
 
-        #region 四、Order翻译器
+        #region 四、Order翻译器+提供给GameController的方法
         OrderMsg ToMsg(BaseOrder order)
         {
             switch (order)
@@ -242,13 +273,13 @@ namespace SparkAge.Controller.Network
                 case AttackUnitOrder o:
                     return new OrderMsg { Type = OrderType.AttackUnit, PlayerId = o.PlayerId, AggressiveUnitId = o.AttackerID, PassiveUnitId = o.DefenderID };
                 case AttackCityOrder o:
-                    return new OrderMsg { Type = OrderType.MoveUnit, PlayerId = o.PlayerId, AggressiveUnitId = o.AttackerID, PassiveCityId = o.CityID };
+                    return new OrderMsg { Type = OrderType.AttackCity, PlayerId = o.PlayerId, AggressiveUnitId = o.AttackerID, PassiveCityId = o.CityID };
                 case FoundCityOrder o:
-                    return new OrderMsg { Type = OrderType.MoveUnit, PlayerId = o.PlayerId, AggressiveUnitId = o.UnitID };
+                    return new OrderMsg { Type = OrderType.FoundCity, PlayerId = o.PlayerId, AggressiveUnitId = o.UnitID };
                 case BuildUnitOrder o:
-                    return new OrderMsg { Type = OrderType.MoveUnit, PlayerId = o.PlayerId, AggressiveCityId = o.CityID, PassiveUnitType = o.Type };
+                    return new OrderMsg { Type = OrderType.BuildUnit, PlayerId = o.PlayerId, AggressiveCityId = o.CityID, PassiveUnitType = o.Type };
                 case EndPhaseOrder o:
-                    return new OrderMsg { Type = OrderType.MoveUnit, PlayerId = o.PlayerId };
+                    return new OrderMsg { Type = OrderType.EndPhase, PlayerId = o.PlayerId };
                 default:
                     return default(OrderMsg);
             }
@@ -272,6 +303,14 @@ namespace SparkAge.Controller.Network
                 default:
                     return null;
             }
+        } 
+        public void SendOrder(BaseOrder order)
+        {
+            NetworkClient.Send(ToMsg(order));
+        }
+        public void SendInitialSnapShot(GameStateDeltaMsg msg)
+        {
+            NetworkServer.SendToAll(msg);
         }
         #endregion
     }

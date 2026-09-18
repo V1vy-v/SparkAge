@@ -7,6 +7,13 @@ namespace SparkAge.Model
     {
         public List<PlayerInfo> PlayerInfos = new List<PlayerInfo>();
         public MapInfo MapInfo;
+        public PlayerInfo GetPlayerInfo(int id)
+        {
+            foreach(var player in PlayerInfos) 
+                if(player.Id == id) 
+                    return player;
+            return null;
+        }
     }
     public class PlayerInfo
     {

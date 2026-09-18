@@ -20,11 +20,11 @@ public class SelCityPanel : BasePanel
         });
         btnItem1.onClick.AddListener(() =>
         {
-            UIManager.Instance.Sink?.RequestBuildUnit(city.ID, UnitType.Settler);
+            UIManager.Instance.UIInput?.RequestBuildUnit(city.ID, UnitType.Settler);
         });
         btnItem2.onClick.AddListener(() =>
         {
-            UIManager.Instance.Sink?.RequestBuildUnit(city.ID, UnitType.Warrior);
+            UIManager.Instance.UIInput?.RequestBuildUnit(city.ID, UnitType.Warrior);
         });
     }
 

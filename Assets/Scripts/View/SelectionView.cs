@@ -56,37 +56,6 @@ namespace SparkAge.View
             BuildMoveAndAttackObjs();
         }
 
-        private void Start()
-        {
-            //订阅事件
-            EventCenter.Instance.AddListener<FoundCityEvent>(e =>
-            {
-                ClearSelection();
-            });
-            EventCenter.Instance.AddListener<UnitMoveEvent>(e =>
-            {
-                SelectUnit(e.unit);
-                ShowHighlight(e.unit.Position);
-            });
-            EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
-            {
-                if (!e.AttackerIsDead)
-                {
-                    SelectUnit(e.Attacker);
-                    ShowHighlight(e.Attacker.Position);
-                }
-                else
-                {
-                    ClearHighlight();
-                    ClearSelection();
-                }
-            });
-            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
-            {
-                SelectUnit(e.Attacker);
-                ShowHighlight(e.Attacker.Position);
-            });
-        }
 
         /// <summary>
         /// 创建高亮六边形对象和单位选中框
@@ -121,7 +90,7 @@ namespace SparkAge.View
         /// 预创建移动范围和攻击范围对象
         /// </summary>
         /// <param name="point"></param>
-        public void BuildMoveAndAttackObjs()
+        private void BuildMoveAndAttackObjs()
         {
             GameObject moveObj, attackObj;
             MeshFilter mf; 
@@ -189,23 +158,11 @@ namespace SparkAge.View
 
             //是否选中城市
             selectedCity = state.GetCityAt((HexCoord)clickHex);
-            if (selectedCity != null)
-            {
-                //调用UI层，显示可建造单位/建筑
-                Debug.Log("请选择建造单位/建筑");
-            }
-            else
-            {
-                //断开引用
-                selectedCity = null;
-                //调用UI层，隐藏可建造单位/建筑
-                Debug.Log("隐藏选择建造界面");
-            }
         }
         /// <summary>
         /// 控制地块高亮：移动高亮对象
         /// </summary>
-        public void ShowHighlight(HexCoord? clickHex)
+        private void ShowHighlight(HexCoord? clickHex)
         {
             highlight.transform.position = HexLayout.HexToPixel((HexCoord)clickHex, hexSize, 0.02f);
             highlight.gameObject.SetActive(true);
@@ -220,7 +177,7 @@ namespace SparkAge.View
         /// <summary>
         /// 实现点击选中单位和显示可移动范围
         /// </summary>
-        public void SelectUnit(Unit unit)
+        private void SelectUnit(Unit unit)
         {
             //高亮选中框
             unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
@@ -236,13 +193,11 @@ namespace SparkAge.View
 
             //显示移动和攻击范围
             ShowRange();
-
-            Debug.Log("当前单位剩余移动力：" + unit.MovementLeft);
         }
         /// <summary>
         /// 隐藏选中框和范围对象
         /// </summary>
-        public void ClearSelection()
+        private void ClearSelection()
         {
             //隐藏选中框
             unitHighlight.gameObject.SetActive(false);

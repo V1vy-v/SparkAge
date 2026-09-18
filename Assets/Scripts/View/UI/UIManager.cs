@@ -14,8 +14,8 @@ namespace SparkAge.View.UI
         //面板字典
         Dictionary<string, BasePanel> panelDic = new();
 
-        public IOrderSink Sink { get; private set; }
-        public void SetOrderSink(IOrderSink sink) => Sink = sink;
+        public IUIInput UIInput { get; private set; }
+        public void SetUIInput(IUIInput uiInput) => UIInput = uiInput;
         public bool IsBlockingUI => panelDic.TryGetValue("SelCityPanel", out BasePanel panel) && (panel as SelCityPanel).gameObject.activeSelf;
         public bool IsPointerOverUI => EventSystem.current.IsPointerOverGameObject();
 

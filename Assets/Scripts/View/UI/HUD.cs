@@ -1,3 +1,4 @@
+using System.Collections;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -6,7 +7,7 @@ namespace SparkAge.View.UI
 {
     public class HUD : BasePanel
     {
-        [SerializeField] TextMeshProUGUI txtTurnNum, txtCurPlayer, txtMyInfo;
+        [SerializeField] TextMeshProUGUI txtTurnNum, txtCurPlayer, txtMyInfo, txtTips;
         [SerializeField] Button btnEndTurn;
         
 
@@ -16,7 +17,7 @@ namespace SparkAge.View.UI
 
             btnEndTurn.onClick.AddListener(() =>
             {
-                UIManager.Instance.Sink?.RequestEndPhase();
+                UIManager.Instance.UIInput?.RequestEndPhase();
             });
         }
 
@@ -28,6 +29,22 @@ namespace SparkAge.View.UI
         {
             txtCurPlayer.SetText("当前玩家：" + name);
             txtTurnNum.SetText("当前回合：{0}", turnNum);
+        }
+        public void UpdateTips(string text)
+        {
+            StopCoroutine(FadeOut());
+
+            txtTips.SetText(text);
+            txtTips.alpha = 1.0f;
+
+            StartCoroutine(FadeOut());
+        }
+
+        WaitForSeconds wait = new WaitForSeconds(3);
+        IEnumerator FadeOut()
+        {
+            yield return wait;
+            txtTips.alpha = 0;
         }
     }
 }

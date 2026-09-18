@@ -29,25 +29,8 @@ namespace SparkAge.View
             cityMesh = HexMeshFactory.CreateHexMesh(0.7f * hexSize);
         }
 
-        private void Start()
-        {
-            //订阅建城事件
-            EventCenter.Instance.AddListener<FoundCityEvent>(e =>
-            {
-                BuildCity(e.City);
-            });
-            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
-            {
-                if (e.CityIsCapture)
-                {
-                    //更新城市边界和标识颜色
-                    UpadateCityColor(e.AttackedCity);
-                }
-            });
-        }
-
         /// <summary>
-        /// 创建城市边界：待定
+        /// 创建城市与边界
         /// </summary>
         public GameObject BuildCity(City city)
         {
@@ -65,16 +48,11 @@ namespace SparkAge.View
             cityObjs[city] = obj;
             return obj;
         }
-        public void DestroyCity(City city)
-        {
-            //销毁城市及边界对象
-
-        }
         /// <summary>
-        /// 更新城市颜色
+        /// 更新城市
         /// </summary>
         /// <param name="city"></param>
-        public void UpadateCityColor(City city)
+        public void UpadateCity(City city)
         {
             cityObjs[city].transform.Find("Marker").GetComponent<MeshRenderer>().material =
                 new Material(Shader.Find("Universal Render Pipeline/Lit"))

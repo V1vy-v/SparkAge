@@ -17,10 +17,6 @@ namespace SparkAge.View
     /// </summary>
     public class UnitView : MonoBehaviour
     {
-        //[SerializeField] Material warriorMaterial;
-        //[SerializeField] Material settlerMaterial;
-
-        //外部提供字段
         GameState state;
         float hexSize;
 
@@ -32,29 +28,6 @@ namespace SparkAge.View
         {
             this.state = state;
             this.hexSize = hexSize;
-
-            //warriorMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-            //{
-            //    color = Color.red
-            //};
-            //settlerMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-            //{
-            //    color = Color.blue
-            //};
-        }
-
-        private void Start()
-        {
-            //订阅建城事件
-            EventCenter.Instance.AddListener<FoundCityEvent>(e =>
-            {
-                DestroyUnit(e.ConsumedSettler);
-            });
-            //订阅造兵事件
-            EventCenter.Instance.AddListener<BuildUnitEvent>(e =>
-            {
-                BuildUnit(e.BuiltUnit);
-            });
         }
 
         /// <summary>
@@ -76,6 +49,15 @@ namespace SparkAge.View
             unitObjs[unit] = unitObj;
             unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
             return unitObj;
+        }
+        /// <summary>
+        /// 更新单位对象
+        /// </summary>
+        /// <param name="unit"></param>
+        public void UpdateUnit(Unit unit)
+        {
+            GameObject unitObj = unitObjs[unit];
+            unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
         }
         /// <summary>
         /// 销毁单位对象

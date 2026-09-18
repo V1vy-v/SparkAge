@@ -1,3 +1,4 @@
+using SparkAge.Controller.Network;
 using SparkAge.Model.Hex;
 using SparkAge.Model.StaticInfos;
 
@@ -18,8 +19,8 @@ namespace SparkAge.Model.Units
     {
         public int ID;//唯一ID
         public int Owner;//所属玩家
-        public UnitType Type;//单位类型
         public HexCoord Position;//位置
+        public UnitType Type;//单位类型
 
         public string Name;//名字
         public int Atk;//攻击力
@@ -28,9 +29,11 @@ namespace SparkAge.Model.Units
         public int MaxHp;//最大生命
         public int MaxMovement;//最大移动力
         public int MovementLeft;//剩余移动力
+        public bool IsDead;
 
-        public Unit(int own, HexCoord position, UnitInfo info, int bornMovement = 0)
+        public Unit(int id, int own, HexCoord position, UnitInfo info)
         {
+            ID = id;
             Owner = own;
             Position = position;
             Type = info.Type;
@@ -39,8 +42,16 @@ namespace SparkAge.Model.Units
             Atk = info.Atk;
             Def = info.Def;
             Hp = MaxHp = info.Hp;
-            MaxMovement = info.Movement;
-            MovementLeft = bornMovement;
+            MovementLeft = MaxMovement = info.Movement;
+            IsDead = false;
+        }
+        public void UpdateProperty(UnitData data)
+        {
+            Owner= data.Owner;
+            Position = data.Position;
+            Hp = data.Hp;
+            MovementLeft= data.MovementLeft;
+            IsDead= data.IsDead;
         }
     }
 }

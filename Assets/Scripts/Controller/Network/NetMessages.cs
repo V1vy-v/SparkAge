@@ -1,6 +1,7 @@
 using Mirror;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
+using System.Collections.Generic;
 
 namespace SparkAge.Controller.Network
 {
@@ -69,18 +70,41 @@ namespace SparkAge.Controller.Network
     //服务端->客户端
     public struct TipMsg : NetworkMessage
     {
-        public string Tips;
+        public string Tip;
     }
     //服务端->所有
-    public struct GameSnapShotMsg : NetworkMessage
+    public struct GameStateDeltaMsg : NetworkMessage
     {
         //游戏状态快照
         public int turnNumber;
         public int curPlayer;
-        //单位
-
-        //城市
-
+        public List<UnitData> UnitDatas;
+        public List<CityData> CityDatas;
+        public List<PlayerData> PlayerDatas;
+    }
+    public struct UnitData
+    {
+        public int Id;
+        public int Owner;
+        public UnitType Type;
+        public HexCoord Position;
+        public int Hp;
+        public int MovementLeft;
+        public bool IsDead;
+    }
+    public struct CityData
+    {
+        public int Id;
+        public int Owner;
+        public string Name;
+        public HexCoord Position;
+        public int Production;
+        public int Hp;
+    }
+    public struct PlayerData
+    {
+        public int Id;
+        public bool IsAlive;
     }
     #endregion
 }

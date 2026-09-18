@@ -1,3 +1,4 @@
+using SparkAge.Controller.Network;
 using SparkAge.Model.StaticInfos;
 
 namespace SparkAge.Model.Players
@@ -16,5 +17,9 @@ namespace SparkAge.Model.Players
             CharacterInfo = characterInfo;
             IsAlive = isAlive;
         }
+        public void UpdateState(PlayerData data)
+        {
+            IsAlive = data.IsAlive;
+        } 
     }
 }

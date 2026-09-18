@@ -1,3 +1,5 @@
+using SparkAge.Framework.Hex;
+using SparkAge.Model.Hex;
 using UnityEngine;
 
 namespace SparkAge.View
@@ -29,15 +31,15 @@ namespace SparkAge.View
         /// <summary>
         /// 摄像机位置初始化：地图中央
         /// </summary>
-        public void Init(Vector3 center, Vector3 topRight, Vector3 bottomLeft, Vector3 target)
+        public void Init(HexCoord center, HexCoord topRight, HexCoord bottomLeft, HexCoord target)
         {
-            this.center = center;
-            this.topRight = topRight;
-            this.bottomLeft = bottomLeft;
+            this.center = HexLayout.HexToPixel(center, 1f, 0);
+            this.topRight = HexLayout.HexToPixel(topRight, 1f, 0); ;
+            this.bottomLeft = HexLayout.HexToPixel(bottomLeft, 1f, 0);
 
-            this.target = target;
+            this.target = HexLayout.HexToPixel(target, 1f, 0);
             transform.rotation = Quaternion.Euler(pitch, 0, 0);
-            transform.position = target - transform.forward * distance;
+            transform.position = this.target - transform.forward * distance;
         }
         /// <summary>
         /// 摄像机移动

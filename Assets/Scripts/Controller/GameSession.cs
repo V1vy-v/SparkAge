@@ -6,10 +6,8 @@ namespace SparkAge.Controller
 {
     public enum ControllerType
     {
-        HumanLocal, 
-        HumanRemote, 
-        AI,
-        WrongType
+        Human, 
+        AI
     }
     public class GameSession
     {
@@ -18,7 +16,7 @@ namespace SparkAge.Controller
         {
             if (PlayerType.TryGetValue(playerId, out ControllerType type))
                 return type;
-            return ControllerType.WrongType;
+            return default;
         }
 
         public void Init(SlotData[] slots)
@@ -27,12 +25,8 @@ namespace SparkAge.Controller
             {
                 if (slot.isAI)
                     PlayerType[slot.PlayerId] = ControllerType.AI;
-                else if(slot.PlayerId != NetworkMgr.Instance.MyPlayerId)
-                    PlayerType[slot.PlayerId] = ControllerType.HumanRemote;
-                else if (slot.PlayerId == NetworkMgr.Instance.MyPlayerId)
-                    PlayerType[slot.PlayerId] = ControllerType.HumanLocal;
                 else
-                    PlayerType[slot.PlayerId] = ControllerType.WrongType;
+                    PlayerType[slot.PlayerId] = ControllerType.Human;
             }
         }
     }

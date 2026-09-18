@@ -77,7 +77,7 @@ namespace SparkAge.View
             _ => plainMaterial
         };
         /// <summary>
-        /// 创建地图中的六边形
+        /// 创建地图中的地块
         /// </summary>
         public void BuildTiles()
         {
@@ -93,19 +93,6 @@ namespace SparkAge.View
                 obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize, 0);
             }
         }
-
-        /// <summary>
-        /// 获取地图边界：左下和右上端点
-        /// </summary>
-        /// <returns></returns>
-        public (Vector3, Vector3, Vector3) GetMapCenterAndBounds()
-        {
-            Vector3 center = HexLayout.HexToPixel(new HexCoord(state.Map.Width / 2, state.Map.Height / 2), hexSize, 0);
-            Vector3 bound1 = HexLayout.HexToPixel(new HexCoord(state.Map.Width - 1, state.Map.Height - 1), hexSize, 0);
-            Vector3 bound2 = HexLayout.HexToPixel(new HexCoord(0, 0), hexSize, 0);
-            return (center, bound1, bound2);
-        }
-
     }
 
 }

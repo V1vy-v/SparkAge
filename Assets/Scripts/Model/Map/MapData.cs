@@ -17,6 +17,17 @@ namespace SparkAge.Model.Map
         public bool IsInMap(HexCoord hexCoord) => Tiles.ContainsKey(hexCoord);
         //地图中心地块
         public HexCoord Center => new HexCoord(Width / 2, Height / 2);
+        //获取4个随机出生点
+        public List<HexCoord> FindSpawnPointsFirst(int num)
+        {
+            return new List<HexCoord> 
+            { 
+                new HexCoord(Width / 4, Height / 4), 
+                new HexCoord(Width / 4 * 3, Height / 4), 
+                new HexCoord(Width / 4, Height / 4 * 3),
+                new HexCoord(Width / 4 * 3, Height / 4 * 3)
+            };
+        }
         //地图初始化
         public MapData(int width, int height)
         {
