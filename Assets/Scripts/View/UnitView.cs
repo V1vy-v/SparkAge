@@ -1,9 +1,11 @@
 using SparkAge.Config;
+using SparkAge.Controller.Network;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
+using SparkAge.Model.Orders;
 using SparkAge.Model.Units;
 using System.Collections;
 using System.Collections.Generic;
@@ -56,7 +58,10 @@ namespace SparkAge.View
         /// <param name="unit"></param>
         public void UpdateUnit(Unit unit)
         {
-            GameObject unitObj = unitObjs[unit];
+            if(!unitObjs.TryGetValue(unit, out GameObject unitObj))
+            {
+                unitObj = BuildUnit(unit);
+            }
             unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
         }
         /// <summary>
@@ -72,11 +77,30 @@ namespace SparkAge.View
         private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
         IEnumerator WalkSteps(Unit unit, List<HexCoord> path, int endIdx)
         {
+            Transform unitTrans = unitObjs[unit].transform;
             for (int i = 0; i <= endIdx; i++)
             {
-                unitObjs[unit].transform.position = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
-                yield return moveDeltaTime;
+                Vector3 target = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
+
+                Vector3 dir = target - unitTrans.position;
+                dir.y = 0;
+
+                unitTrans.rotation = Quaternion.LookRotation(dir);
+                while (Vector3.Distance(unitTrans.position, target) > 0.01f)
+                {
+                    unitTrans.position = Vector3.MoveTowards(
+                        unitTrans.position,
+                        target,
+                        4 * Time.deltaTime 
+                    );
+                    yield return null;
+                }
+                unitTrans.position = target;
             }
+        }
+        IEnumerator AttackAnimation(Unit unit, HexCoord target)
+        {
+            yield return null;
         }
 
         /// <summary>
@@ -98,12 +122,13 @@ namespace SparkAge.View
         IEnumerator MoveUnitSequence(Unit unit, List<HexCoord> path)
         {
             yield return StartCoroutine(WalkSteps(unit, path, path.Count - 1));
-            //发布单位移动事件
-            EventCenter.Instance.EventTrigger<UnitMoveEvent>(new UnitMoveEvent(unit, path, false));
+            
+            if(state.CurrentPlayer == NetworkMgr.Instance.MyPlayerId)
+                EventCenter.Instance.EventTrigger<MoveUnitEvent>(new MoveUnitEvent(unit));
         }
-        public void AttackUnit(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, bool canEnter, List<HexCoord> path)
+        public void AttackUnit(Unit attacker, Unit defender, bool canEnter, List<HexCoord> path)
         {
-            StartCoroutine(AttackUnitSequence(attacker, defender, attackerIsDead, defenderIsDead, canEnter, path));
+            StartCoroutine(AttackUnitSequence(attacker, defender, canEnter, path));
         }
 
         /// <summary>
@@ -112,7 +137,7 @@ namespace SparkAge.View
         /// <param name="obj"></param>
         /// <param name="path"></param>
         /// <returns></returns>
-        IEnumerator AttackUnitSequence(Unit attacker, Unit defender, bool attackerIsDead, bool defenderIsDead, bool canEnter, List<HexCoord> path)
+        IEnumerator AttackUnitSequence(Unit attacker, Unit defender, bool canEnter, List<HexCoord> path)
         {
             //靠近目标单位
             yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
@@ -120,17 +145,16 @@ namespace SparkAge.View
             //停顿1秒暂且当做攻击动画
             yield return new WaitForSeconds(1f);
 
-            if (!attackerIsDead && defenderIsDead && canEnter)
+            if (!attacker.IsDead && defender.IsDead && canEnter)
                 unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
-            if (attackerIsDead)
+            
+            if (attacker.IsDead)
                 DestroyUnit(attacker);
-            if (defenderIsDead)
+            if (defender.IsDead)
                 DestroyUnit(defender);
 
-            Debug.Log("战斗结果：\n攻方：" + (attackerIsDead ? "死亡" : "存活") + "；守方：" + (defenderIsDead ? "死亡" : "存活"));
-
-            //发布攻击单位完成事件
-            EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, attackerIsDead));
+            if (state.CurrentPlayer == NetworkMgr.Instance.MyPlayerId)
+                EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, defender));
         }
 
         /// <summary>
@@ -141,11 +165,11 @@ namespace SparkAge.View
         /// <param name="cityIsCaptured"></param>
         /// <param name="path"></param>
         /// <param name="defenderIsDead"></param>
-        public void AttackCity(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+        public void AttackCity(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path)
         {
-            StartCoroutine(AttackCitySequence(attacker, city, cityIsCaptured, path, defenderIsDead));
+            StartCoroutine(AttackCitySequence(attacker, city, cityIsCaptured, path));
         }
-        IEnumerator AttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+        IEnumerator AttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path)
         {
             //靠近目标单位
             yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
@@ -156,14 +180,9 @@ namespace SparkAge.View
             {
                 unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
             }
-            if (defenderIsDead)
-            {
-                //给守方玩家游戏失败的信息（主要是UI层）
-                Debug.Log("玩家" + city.Owner.ToString() + "失败");
-            }
-            Debug.Log("战斗结果：\n城市：" + (cityIsCaptured ? "被攻占" : "受到伤害"));
-            //发布攻击城市完成事件
-            EventCenter.Instance.EventTrigger<AttackCityEvent>(new AttackCityEvent(attacker, city, cityIsCaptured, defenderIsDead));
+
+            if (state.CurrentPlayer == NetworkMgr.Instance.MyPlayerId)
+                EventCenter.Instance.EventTrigger<AttackCityEvent>(new AttackCityEvent(attacker, city, cityIsCaptured));
         }
     }
 }

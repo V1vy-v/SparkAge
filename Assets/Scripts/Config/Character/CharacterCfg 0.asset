@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Id: 0
   Name: "\u968F\u673A"
-  Description: 
+  Description: 000
   CityNames:
-  - 
-  - 
+  - "\u968F\u673A1"
+  - "\u968F\u673A2"
   Prefab: {fileID: 0}

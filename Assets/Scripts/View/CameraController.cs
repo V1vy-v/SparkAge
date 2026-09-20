@@ -1,5 +1,6 @@
 using SparkAge.Framework.Hex;
 using SparkAge.Model.Hex;
+using System.Collections;
 using UnityEngine;
 
 namespace SparkAge.View
@@ -16,9 +17,12 @@ namespace SparkAge.View
         Vector3 target;
         //地图中心和边界
         Vector3 center, topRight, bottomLeft;
+        bool isBlocking = false;
 
         void LateUpdate()
         {
+            if (isBlocking) return;
+
             //中键滚轮缩放
             float scroll = Input.GetAxis("Mouse ScrollWheel");
             if (scroll != 0)
@@ -31,15 +35,14 @@ namespace SparkAge.View
         /// <summary>
         /// 摄像机位置初始化：地图中央
         /// </summary>
-        public void Init(HexCoord center, HexCoord topRight, HexCoord bottomLeft, HexCoord target)
+        public void Init(HexCoord center, HexCoord topRight, HexCoord bottomLeft)
         {
             this.center = HexLayout.HexToPixel(center, 1f, 0);
             this.topRight = HexLayout.HexToPixel(topRight, 1f, 0); ;
             this.bottomLeft = HexLayout.HexToPixel(bottomLeft, 1f, 0);
 
-            this.target = HexLayout.HexToPixel(target, 1f, 0);
+            this.target = HexLayout.HexToPixel(center, 1f, 0);
             transform.rotation = Quaternion.Euler(pitch, 0, 0);
-            transform.position = this.target - transform.forward * distance;
         }
         /// <summary>
         /// 摄像机移动
@@ -64,6 +67,28 @@ namespace SparkAge.View
             //摄像机缩放
             distance = Mathf.Clamp(distance - scroll * scrollSpeed, minDistance, maxDistance);
             transform.position = target - transform.forward * distance;
+        }
+        private Coroutine changeTarget;
+        public void ChangeTarget(Vector3 target)
+        {
+            if(changeTarget != null)
+            {
+                StopCoroutine(changeTarget);
+            }
+            this.target = target;
+            isBlocking = true;
+            changeTarget = StartCoroutine(ChangeTargetSequence(target - transform.forward * distance));
+        }
+        IEnumerator ChangeTargetSequence(Vector3 newTarget)
+        {
+            while (Vector3.Distance(transform.position, newTarget) > 0.01f) 
+            {
+                transform.position = Vector3.Lerp(transform.position, newTarget, Time.deltaTime * 10);
+                yield return null;
+            }
+            transform.position = newTarget;
+            isBlocking = false;
+            changeTarget = null;
         }
     }
 

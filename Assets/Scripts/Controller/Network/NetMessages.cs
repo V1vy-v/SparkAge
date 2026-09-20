@@ -67,15 +67,25 @@ namespace SparkAge.Controller.Network
         public int PassiveCityId;
         public HexCoord Target;
     }
+    public struct GameReadyMsg: NetworkMessage
+    {
+
+    }
     //服务端->客户端
     public struct TipMsg : NetworkMessage
     {
         public string Tip;
     }
     //服务端->所有
-    public struct GameStateDeltaMsg : NetworkMessage
+    public struct GameUpdateMsg : NetworkMessage
     {
-        //游戏状态快照
+        public GameStateDeltaMsg Delta;
+        public HintMsg Hint;
+    }
+
+    //游戏状态变化
+    public struct GameStateDeltaMsg
+    {
         public int turnNumber;
         public int curPlayer;
         public List<UnitData> UnitDatas;
@@ -105,6 +115,41 @@ namespace SparkAge.Controller.Network
     {
         public int Id;
         public bool IsAlive;
+    }
+    //动画消息
+    public enum HintType
+    {
+        NoHint,
+        InitialGameUpdate,
+        BuildUnit,
+        FoundCity,
+        MoveUnit,
+        AttackUnit,
+        AttackCity,
+        EndPhase
+    }
+    public struct HintMsg
+    {
+        public HintType Type;
+        public List<int> InitialUnits;
+        public UnitHintData UnitHintData;
+        public CityHintData CityHintData;
+    }
+    public struct UnitHintData
+    {
+        public int UnitId;
+        public List<HexCoord> Path;
+        public int TargetUnitId;
+        public int TargetCityId;
+        public bool CanEnter;
+        public bool AttackerIsDead;
+        public bool DefenderIsDead;
+        public bool CityIsCaptured;
+    }
+    public struct CityHintData
+    {
+        public int CityId;
+        public int UnitId;
     }
     #endregion
 }

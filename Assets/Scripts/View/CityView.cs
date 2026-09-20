@@ -1,3 +1,4 @@
+using ParrelSync.Update;
 using SparkAge.Config;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
@@ -29,6 +30,15 @@ namespace SparkAge.View
             cityMesh = HexMeshFactory.CreateHexMesh(0.7f * hexSize);
         }
 
+        private void Start()
+        {
+            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
+            {
+                if (e.CityIsCapture)
+                    UpdateCity(e.City);
+            });
+        }
+
         /// <summary>
         /// 创建城市与边界
         /// </summary>
@@ -52,7 +62,7 @@ namespace SparkAge.View
         /// 更新城市
         /// </summary>
         /// <param name="city"></param>
-        public void UpadateCity(City city)
+        public void UpdateCity(City city)
         {
             cityObjs[city].transform.Find("Marker").GetComponent<MeshRenderer>().material =
                 new Material(Shader.Find("Universal Render Pipeline/Lit"))

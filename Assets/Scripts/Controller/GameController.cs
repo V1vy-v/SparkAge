@@ -8,17 +8,16 @@ using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Orders;
 using SparkAge.Model.Players;
-using SparkAge.Model.StaticInfos;
 using SparkAge.Model.Units;
 using SparkAge.View;
 using SparkAge.View.UI;
 using System.Collections;
 using System.Collections.Generic;
-using UnityEditor.Experimental.GraphView;
 using UnityEngine;
 using static SparkAge.Controller.GameController;
 using static SparkAge.Framework.EventCenter.EventDefine;
 using static SparkAge.Model.GameState;
+using static UnityEngine.Rendering.DebugUI;
 
 namespace SparkAge.Controller
 {
@@ -38,14 +37,16 @@ namespace SparkAge.Controller
     {
         public ExecuteResult ExecuteOrder(BaseOrder order);
         public void ApplyTip(TipMsg msg);
-        public void ApplySnapShot(GameStateDeltaMsg msg);
+        public void ApplyGameUpdate(GameUpdateMsg msg);
+        public void InitClientWorldState(GameUpdateMsg msg);
     }
     public enum GamePhase
     {
-        PlayerTurn,  //等待玩家输入
-        OtherPhase,  //其他玩家操作中
-        AiPhase,     //Ai操作中
-        GameOver     //玩家失败
+        PlayerTurn,     //等待玩家输入
+        OtherPhase,     //其他玩家操作中
+        AiPhase,        //Ai操作中
+        GameOver,       //玩家失败
+        WaitingServer   //等待服务器消息
     }
     /// <summary>
     /// 游戏控制层
@@ -77,65 +78,20 @@ namespace SparkAge.Controller
 
         private void Awake()
         {
-            //配置装配与注入
-            InitGameInfo();
-            NetworkMgr.Instance.SetNetworkInput(this);
-            UIManager.Instance.SetUIInput(this);
-            //创建游戏状态
-            StartGame();
+            //配置装配
+            BuildGameInfo();
+            //构建项目结构
+            BuildModelAndView();
+            //为网络层和UI层注入接口
+            RegisterRuntimeEndpoints();
         }
         private void Start()
         {
-            //构建地图
-            mapView.BuildTiles();
-
-            //显示HUD
-            var panel = UIManager.Instance.ShowPanel<HUD>();
-            panel.InitMyInfo(gameInfo.GetPlayerInfo(MyPlayerId));
-            panel.UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
-
-            //初始化摄像机脚本
-            (HexCoord, HexCoord, HexCoord) keyPos = state.GetMapKeyPos();
-            CameraController.Init(keyPos.Item1, keyPos.Item2, keyPos.Item3, keyPos.Item1);
-
-            //服务端创建初始状态并广播
+            InitView();
+            AddEventListener();
             if (NetworkServer.active)
-            {
-                state.CreateInitialUnits();
-
-                List<UnitData> initUnits = new List<UnitData>();
-                foreach(var unit in state.AllUnits)
-                {
-                    //更新本地表现层
-                    unitView.BuildUnit(unit);
-
-                    //获取初始世界状态并打包进msg
-                    initUnits.Add(new UnitData
-                    { 
-                        Id = unit.ID,
-                        Owner = unit.Owner,
-                        Type = unit.Type,
-                        Position = unit.Position,
-                        Hp = unit.Hp,
-                        MovementLeft = unit.MovementLeft,
-                        IsDead = unit.IsDead
-                    });
-                }
-                GameStateDeltaMsg msg = new GameStateDeltaMsg
-                {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = initUnits,
-                    CityDatas = new List<CityData> { },
-                    PlayerDatas = new List<PlayerData> { }
-                };
-                NetworkMgr.Instance.SendInitialSnapShot(msg);
-            }
-            else
-            {
-                if(NetworkMgr.Instance.GameStateDeltaMsgQueue.Count > 0)
-                    ApplySnapShot(NetworkMgr.Instance.GameStateDeltaMsgQueue.Dequeue());
-            }
+                InitHostWorldState();
+            NetworkMgr.Instance.SendGameReady();
         }
         private void Update()
         {
@@ -145,24 +101,19 @@ namespace SparkAge.Controller
                     HandlePlayerInput();
                     break;
                 case GamePhase.OtherPhase:
-                    break;
                 case GamePhase.AiPhase:
-                    break;
                 case GamePhase.GameOver:
+                case GamePhase.WaitingServer:
                     return;
             }
         }
         private void OnDestroy()
         {
-            NetworkMgr.Instance.SetNetworkInput(null);
-            UIManager.Instance.SetUIInput(null);
+            UnregisterRuntimeEndpoints();
         }
 
         //================ 初始化相关 ==================
-        /// <summary>
-        /// 初始配置表读取与注入
-        /// </summary>
-        private void InitGameInfo()
+        private void BuildGameInfo()
         {
             //装配游戏房间配置（玩家选择角色和地图）
             gameInfo = new GameInfo();
@@ -172,7 +123,7 @@ namespace SparkAge.Controller
                 gameInfo.PlayerInfos.Add(new PlayerInfo { Id = slot.PlayerId, Name = slot.Name, CharacterInfo = ConfigMgr.Instance.StaticInfo.CharacterInfos[slot.CharacterId] });
             }
         }
-        private void StartGame()
+        private void BuildModelAndView()
         {
             state = new GameState(gameInfo, ConfigMgr.Instance.StaticInfo);
             state.Init();
@@ -194,6 +145,125 @@ namespace SparkAge.Controller
 
             cityView = gameObject.AddComponent<CityView>();
             cityView.Init(state, hexSize);
+        }
+        private void RegisterRuntimeEndpoints()
+        {
+            NetworkMgr.Instance.SetNetworkInput(this);
+            UIManager.Instance.SetUIInput(this);
+        }
+
+        private void InitView()
+        {
+            //构建地图
+            mapView.BuildTiles();
+
+            //显示HUD
+            var panel = UIManager.Instance.ShowPanel<HUD>();
+            panel.InitMyInfo(gameInfo.GetPlayerInfo(MyPlayerId));
+
+            //初始化摄像机脚本
+            (HexCoord, HexCoord, HexCoord) keyPos = state.GetMapKeyPos();
+            CameraController.Init(keyPos.Item1, keyPos.Item2, keyPos.Item3);
+        }
+        private void InitHostWorldState()
+        {
+            state.CreateInitialUnits();
+
+            phase = GamePhase.PlayerTurn;
+            UIManager.Instance.ShowPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
+
+            List<UnitData> initUnits = new List<UnitData>();
+            List<int> initialUnits = new List<int>();
+            foreach (var unit in state.AllUnits)
+            {
+                //更新本地表现层
+                unitView.BuildUnit(unit);
+                if (unit.Owner == MyPlayerId)
+                    CameraController.ChangeTarget(HexLayout.HexToPixel(unit.Position, hexSize, 0.5f));
+
+                //获取初始世界状态并打包进msg
+                initUnits.Add(new UnitData
+                {
+                    Id = unit.ID,
+                    Owner = unit.Owner,
+                    Type = unit.Type,
+                    Position = unit.Position,
+                    Hp = unit.Hp,
+                    MovementLeft = unit.MovementLeft,
+                    IsDead = unit.IsDead
+                });
+                initialUnits.Add(unit.ID);
+            }
+            GameUpdateMsg msg = new GameUpdateMsg
+            {
+                Delta = new GameStateDeltaMsg
+                {
+                    turnNumber = state.TurnNumber,
+                    curPlayer = state.CurrentPlayer,
+                    UnitDatas = initUnits
+                },
+                Hint = new HintMsg
+                {
+                    Type = HintType.InitialGameUpdate,
+                    InitialUnits = initialUnits
+                }
+            };
+            NetworkMgr.Instance.SetGameInitMsg(msg);
+        }
+        private void AddEventListener()
+        {
+            EventCenter.Instance.AddListener<MoveUnitEvent>(e => 
+            {
+                isBlockingInput = false;
+            });
+            EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
+            {
+                isBlockingInput = false;
+                UIManager.Instance.GetPanel<SelCityPanel>().HideMe();
+                if (e.Attacker.IsDead)
+                {
+                    UIManager.Instance.GetPanel<SelUnitPanel>().HideMe();
+                }
+                else
+                {
+                    UIManager.Instance.ShowPanel<SelUnitPanel>().UpdatePanel(e.Attacker);
+                }
+            });
+            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
+            {
+                isBlockingInput = false;
+                UIManager.Instance.GetPanel<SelCityPanel>().HideMe();
+                if (e.Attacker.IsDead)
+                {
+                    UIManager.Instance.GetPanel<SelUnitPanel>().HideMe();
+                }
+                else
+                {
+                    UIManager.Instance.ShowPanel<SelUnitPanel>().UpdatePanel(e.Attacker);
+                }
+            });
+        }
+        public void InitClientWorldState(GameUpdateMsg msg)
+        {
+            ApplyGameUpdate(msg);
+
+            phase = GamePhase.OtherPhase;
+            UIManager.Instance.ShowPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
+
+            foreach (var unit in state.AllUnits)
+            {
+                if (unit.Owner == MyPlayerId)
+                {
+                    CameraController.ChangeTarget(HexLayout.HexToPixel(unit.Position, hexSize, 0.5f));
+                    break;
+                }
+            }
+        }
+
+        private void UnregisterRuntimeEndpoints()
+        {
+            NetworkMgr.Instance.SetNetworkInput(null);
+            UIManager.Instance.SetUIInput(null);
         }
 
         //================= 交互相关 ===================
@@ -257,7 +327,7 @@ namespace SparkAge.Controller
                 //高亮
                 selectionView.HandleClick(GetClickHex());
                 //UI显示
-                if(selectionView.SelectedUnit != null && selectionView.SelectedUnit.Owner == MyPlayerId)
+                if(selectionView.SelectedUnit != null && IsMine(selectionView.SelectedUnit.Owner))
                 {
                     var panel = UIManager.Instance.ShowPanel<SelUnitPanel>();
                     panel.UpdatePanel(selectionView.SelectedUnit);
@@ -265,7 +335,7 @@ namespace SparkAge.Controller
                 else
                     UIManager.Instance.HidePanel<SelUnitPanel>();
 
-                if (selectionView.SelectedCity != null && selectionView.SelectedCity.Owner == MyPlayerId)
+                if (selectionView.SelectedCity != null && IsMine(selectionView.SelectedCity.Owner))
                 {
                     var panel = UIManager.Instance.ShowPanel<SelCityPanel>();
                     panel.UpdatePanel(selectionView.SelectedCity);
@@ -281,7 +351,7 @@ namespace SparkAge.Controller
                 {
                     Unit tarUnit = state.GetUnitAt((HexCoord)hex);
                     City tarCity = state.GetCityAt((HexCoord)hex);
-                    if (tarUnit == null && (tarCity == null || tarCity.Owner == selectionView.SelectedUnit.Owner))
+                    if (tarUnit == null && (tarCity == null || IsMine(tarCity.Owner)))
                         SubmitOrder(new MoveUnitOrder(MyPlayerId, selectionView.SelectedUnit.ID, (HexCoord)hex));
                     else if (tarUnit != null)
                         SubmitOrder(new AttackUnitOrder(MyPlayerId, selectionView.SelectedUnit.ID, tarUnit.ID));
@@ -289,6 +359,16 @@ namespace SparkAge.Controller
                         SubmitOrder(new AttackCityOrder(MyPlayerId, selectionView.SelectedUnit.ID, tarCity.ID));
                 }
             }
+        }
+        /// <summary>
+        /// 结束等待消息和动画
+        /// </summary>
+        private void RecoverPhase()
+        {
+            if (state.CurrentPlayer == MyPlayerId)
+                phase = GamePhase.PlayerTurn;
+            else
+                phase = GamePhase.OtherPhase;
         }
 
         //================== Ai相关 ===================
@@ -325,6 +405,7 @@ namespace SparkAge.Controller
 
         //================== 网络交互相关 ===================
         #region 一、非主机客户端侧
+
         /// <summary>
         /// 提交Order：主机直接本地执行；非主机将order翻译成msg发送给服务端
         /// </summary>
@@ -338,6 +419,8 @@ namespace SparkAge.Controller
                 return;
             }
 
+            if(!NetworkServer.active)
+                phase = GamePhase.WaitingServer;
             NetworkMgr.Instance.SendOrder(order);
         }
         /// <summary>
@@ -347,45 +430,94 @@ namespace SparkAge.Controller
         public void ApplyTip(TipMsg msg)
         {
             UIManager.Instance.GetPanel<HUD>().UpdateTips(msg.Tip);
+
+            RecoverPhase();
         }
         /// <summary>
         /// order操作成功，同步返回的世界状态
         /// </summary>
         /// <param name="msg"></param>
-        public void ApplySnapShot(GameStateDeltaMsg msg)
+        public void ApplyGameUpdate(GameUpdateMsg msg)
+        {
+            ApplyGameStateDelta(msg.Delta);
+            ApplyHint(msg.Hint);
+            RecoverPhase();
+        }
+        private void ApplyGameStateDelta(GameStateDeltaMsg msg)
         {
             //更新GameState
-            AppliedDelta appliedDelta = state.ApplySnapshot(msg);
+            state.ApplyGameDelta(msg);
+        }
+        private void ApplyHint(HintMsg msg)
+        {
             //更新回合数和当前玩家
             UIManager.Instance.GetPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
-            //更新View和其它UI
-            //单位
-            foreach (var unit in appliedDelta.AddedUnits)
-                unitView.BuildUnit(unit);
-            foreach (var unit in appliedDelta.UpdatedUnits)
-                unitView.UpdateUnit(unit);
-            foreach (var unit in appliedDelta.RemovedUnits)
-                unitView.DestroyUnit(unit);
-            //城市
-            foreach (var city in appliedDelta.AddedCities)
-                cityView.BuildCity(city);
-            foreach (var city in appliedDelta.UpdatedCities)
-                cityView.UpadateCity(city);
-            //玩家：主要是UI
-            if (state.CurrentPlayer == MyPlayerId)
-                phase = GamePhase.PlayerTurn;
-            else
-                phase = GamePhase.OtherPhase;
+
+            UnitHintData unitData = msg.UnitHintData;
+            CityHintData cityData = msg.CityHintData;
+            Unit unit, attacker, defender;
+            City city;
+            switch (msg.Type)
+            {
+                case HintType.NoHint:
+                    return;
+                case HintType.InitialGameUpdate:
+                    foreach(var id in msg.InitialUnits)
+                    {
+                        unit = state.TryGetUnit(id);
+                        unitView.BuildUnit(unit);
+                    }
+                    break;
+                case HintType.BuildUnit:
+                    unit = state.TryGetUnit(cityData.UnitId);
+                    unitView.BuildUnit(unit);
+                    break;
+                case HintType.FoundCity:
+                    unit = state.TryGetDeadUnit(unitData.UnitId);
+                    city = state.TryGetCity(unitData.TargetCityId);
+                    unitView.DestroyUnit(unit);
+                    cityView.BuildCity(city);
+                    break;
+                case HintType.MoveUnit:
+                    unit = state.TryGetUnit(unitData.UnitId);
+                    if (IsMyTurn)
+                        isBlockingInput = true;
+                    unitView.MoveUnit(unit, unitData.Path);
+                    break;
+                case HintType.AttackUnit:
+                    if (unitData.AttackerIsDead)
+                        attacker = state.TryGetDeadUnit(unitData.UnitId);
+                    else
+                        attacker = state.TryGetUnit(unitData.UnitId);
+                    if (unitData.DefenderIsDead)
+                        defender = state.TryGetDeadUnit(unitData.TargetUnitId);
+                    else
+                        defender = state.TryGetUnit(unitData.TargetUnitId);
+                    if (IsMyTurn)
+                        isBlockingInput = true;
+                    unitView.AttackUnit(attacker, defender, unitData.CanEnter, unitData.Path);
+                    break;
+                case HintType.AttackCity:
+                    attacker = state.TryGetUnit(unitData.UnitId);
+                    city = state.TryGetCity(unitData.TargetCityId);
+                    if (IsMyTurn)
+                        isBlockingInput = true;
+                    unitView.AttackCity(attacker, city, unitData.CityIsCaptured, unitData.Path);
+                    break;
+                case HintType.EndPhase:
+                    selectionView.ClearAll();
+                    break;
+            }
         }
         #endregion
 
-        #region 三、主机服务端侧
-        public enum ExecuteResultType { Tip, GameStateDelta }
+        #region 二、主机端侧
+        public enum ExecuteResultType { Tip, GameUpdate }
         public struct ExecuteResult
         {
             public ExecuteResultType Type;
             public TipMsg Tip;
-            public GameStateDeltaMsg GameStateDelta;
+            public GameUpdateMsg GameUpdateMsg;
         }
         /// <summary>
         /// 执行order：接收来自自身或其他客户端的order，分发给GameState执行
@@ -417,19 +549,46 @@ namespace SparkAge.Controller
         {
             state.EndPhase();
 
+            selectionView.ClearAll();
             //更新回合数和当前玩家
             UIManager.Instance.GetPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
 
+            if (session.GetControllerType(state.CurrentPlayer) == ControllerType.AI)
+            {
+                Debug.Log("开始AI回合");
+                state.EndTurn();
+                UIManager.Instance.GetPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
+                phase = GamePhase.PlayerTurn;
+            }
+
+            //全量更新
+            List<UnitData> unitDatas = new List<UnitData>();
+            foreach (var unit in state.AllUnits)
+                unitDatas.Add(Unit2Data(unit));
+            List<CityData> cityDatas = new List<CityData>();
+            foreach (var city in state.AllCities)
+                cityDatas.Add(City2Data(city));
+            List<PlayerData> playerDatas = new List<PlayerData>();
+            foreach (var player in state.AllPlayers)
+                playerDatas.Add(Player2Data(player));
+
             return new ExecuteResult
             {
-                Type = ExecuteResultType.GameStateDelta,
-                GameStateDelta = new GameStateDeltaMsg
+                Type = ExecuteResultType.GameUpdate,
+                GameUpdateMsg = new GameUpdateMsg
                 {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = new List<UnitData> { },
-                    CityDatas = new List<CityData> { },
-                    PlayerDatas = new List<PlayerData> { }
+                    Delta = new GameStateDeltaMsg
+                    {
+                        turnNumber = state.TurnNumber,
+                        curPlayer = state.CurrentPlayer,
+                        UnitDatas = unitDatas,
+                        CityDatas = cityDatas,
+                        PlayerDatas = playerDatas
+                    },
+                    Hint = new HintMsg
+                    {
+                        Type = HintType.EndPhase
+                    }
                 }
             };
 
@@ -458,14 +617,24 @@ namespace SparkAge.Controller
 
             return new ExecuteResult
             {
-                Type = ExecuteResultType.GameStateDelta,
-                GameStateDelta = new GameStateDeltaMsg
+                Type = ExecuteResultType.GameUpdate,
+                GameUpdateMsg = new GameUpdateMsg
                 {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = new List<UnitData> { Unit2Data(unit) },
-                    CityDatas = new List<CityData> { },
-                    PlayerDatas = new List<PlayerData> { }
+                    Delta = new GameStateDeltaMsg
+                    {
+                        turnNumber = state.TurnNumber,
+                        curPlayer = state.CurrentPlayer,
+                        UnitDatas = new List<UnitData> { Unit2Data(unit) }
+                    },
+                    Hint = new HintMsg
+                    {
+                        Type = HintType.MoveUnit,
+                        UnitHintData = new UnitHintData
+                        {
+                            UnitId = unitId,
+                            Path = result.Path
+                        }
+                    }
                 }
             };
         }
@@ -480,18 +649,30 @@ namespace SparkAge.Controller
 
             //更新表现层
             unitView.DestroyUnit(unit);
+            selectionView.ClearSelection();
             cityView.BuildCity(result.City);
 
             return new ExecuteResult
             {
-                Type = ExecuteResultType.GameStateDelta,
-                GameStateDelta = new GameStateDeltaMsg
+                Type = ExecuteResultType.GameUpdate,
+                GameUpdateMsg = new GameUpdateMsg
                 {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = new List<UnitData> { Unit2Data(unit) },
-                    CityDatas = new List<CityData> { City2Data(result.City) },
-                    PlayerDatas = new List<PlayerData> { }
+                    Delta = new GameStateDeltaMsg
+                    {
+                        turnNumber = state.TurnNumber,
+                        curPlayer = state.CurrentPlayer,
+                        UnitDatas = new List<UnitData> { Unit2Data(unit) },
+                        CityDatas = new List<CityData> { City2Data(result.City) }
+                    },
+                    Hint = new HintMsg
+                    {
+                        Type = HintType.FoundCity,
+                        UnitHintData = new UnitHintData
+                        {
+                            UnitId = unit.ID,
+                            TargetCityId = result.City.ID
+                        }
+                    }
                 }
             };
         }
@@ -510,14 +691,25 @@ namespace SparkAge.Controller
 
             return new ExecuteResult
             {
-                Type = ExecuteResultType.GameStateDelta,
-                GameStateDelta = new GameStateDeltaMsg
+                Type = ExecuteResultType.GameUpdate,
+                GameUpdateMsg = new GameUpdateMsg
                 {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = new List<UnitData> { Unit2Data(result.Unit) },
-                    CityDatas = new List<CityData> { City2Data(city) },
-                    PlayerDatas = new List<PlayerData> { }
+                    Delta = new GameStateDeltaMsg
+                    {
+                        turnNumber = state.TurnNumber,
+                        curPlayer = state.CurrentPlayer,
+                        UnitDatas = new List<UnitData> { Unit2Data(result.Unit) },
+                        CityDatas = new List<CityData> { City2Data(city) }
+                    },
+                    Hint = new HintMsg
+                    {
+                        Type = HintType.BuildUnit,
+                        CityHintData = new CityHintData
+                        {
+                            CityId = city.ID,
+                            UnitId = result.Unit.ID
+                        }
+                    }
                 }
             };
         }
@@ -533,18 +725,32 @@ namespace SparkAge.Controller
                 return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
 
             //更新表现层
-
+            unitView.AttackUnit(attacker, defender, result.CanEnter, result.Path);
 
             return new ExecuteResult
             {
-                Type = ExecuteResultType.GameStateDelta,
-                GameStateDelta = new GameStateDeltaMsg
+                Type = ExecuteResultType.GameUpdate,
+                GameUpdateMsg = new GameUpdateMsg
                 {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = new List<UnitData> { Unit2Data(attacker), Unit2Data(defender) },
-                    CityDatas = new List<CityData> { },
-                    PlayerDatas = new List<PlayerData> { }
+                    Delta = new GameStateDeltaMsg
+                    {
+                        turnNumber = state.TurnNumber,
+                        curPlayer = state.CurrentPlayer,
+                        UnitDatas = new List<UnitData> { Unit2Data(attacker), Unit2Data(defender) }
+                    },
+                    Hint = new HintMsg
+                    {
+                        Type = HintType.AttackUnit,
+                        UnitHintData = new UnitHintData
+                        {
+                            UnitId = attackerID,
+                            Path = result.Path,
+                            TargetUnitId = defenderID,
+                            CanEnter = result.CanEnter,
+                            AttackerIsDead = attacker.IsDead,
+                            DefenderIsDead = defender.IsDead
+                        }
+                    }
                 }
             };
 
@@ -560,16 +766,32 @@ namespace SparkAge.Controller
             if (!result.Success)
                 return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
 
+            //更新表现层
+            unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path);
+
             return new ExecuteResult
             {
-                Type = ExecuteResultType.GameStateDelta,
-                GameStateDelta = new GameStateDeltaMsg
+                Type = ExecuteResultType.GameUpdate,
+                GameUpdateMsg = new GameUpdateMsg
                 {
-                    turnNumber = state.TurnNumber,
-                    curPlayer = state.CurrentPlayer,
-                    UnitDatas = new List<UnitData> { Unit2Data(attacker) },
-                    CityDatas = new List<CityData> { City2Data(city) },
-                    PlayerDatas = new List<PlayerData> { }
+                    Delta = new GameStateDeltaMsg
+                    {
+                        turnNumber = state.TurnNumber,
+                        curPlayer = state.CurrentPlayer,
+                        UnitDatas = new List<UnitData> { Unit2Data(attacker) },
+                        CityDatas = new List<CityData> { City2Data(city) }
+                    },
+                    Hint = new HintMsg
+                    {
+                        Type = HintType.AttackCity,
+                        UnitHintData = new UnitHintData
+                        {
+                            UnitId = attackerID,
+                            Path = result.Path,
+                            TargetCityId = cityID,
+                            CityIsCaptured = result.CityIsCaptured
+                        }
+                    }
                 }
             };
 
@@ -591,6 +813,11 @@ namespace SparkAge.Controller
             Position = city.Position,
             Production = city.Production,
             Hp = city.Hp,
+        };
+        private PlayerData Player2Data(PlayerState player) => new PlayerData
+        {
+            Id = player.ID,
+            IsAlive = player.IsAlive
         };
         #endregion
 

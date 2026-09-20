@@ -336,72 +336,72 @@ namespace SparkAge.Model
         #endregion
 
         #region 二、客户端执行方法，主要用于同步状态
-        AppliedDelta appliedDelta;
-
-        public AppliedDelta ApplySnapshot(GameStateDeltaMsg msg)
+        List<Unit> deadUnits = new List<Unit>();
+        public Unit TryGetDeadUnit(int id) => deadUnits.Find(u => u.ID == id);
+        public void ApplyGameDelta(GameStateDeltaMsg msg)
         {
+            deadUnits.Clear();
             //更新回合数和当前玩家
             turnNumber = msg.turnNumber;
             currentPlayer = msg.curPlayer;
-            if(appliedDelta == null)
-                appliedDelta = new AppliedDelta();
-            appliedDelta.Clear();
             //更新涉及的单位
-            foreach (var data in msg.UnitDatas)
+            if(msg.UnitDatas != null)
             {
-                Unit unit = TryGetUnit(data.Id);
-                if (unit != null)
+                foreach (var data in msg.UnitDatas)
                 {
-                    unit.UpdateProperty(data);
-                    if (unit.IsDead)
+                    Unit unit = TryGetUnit(data.Id);
+                    if (unit != null)
                     {
-                        units.Remove(unit);
-                        appliedDelta.RemovedUnits.Add(unit);
+                        unit.UpdateProperty(data);
+                        if (unit.IsDead)
+                        {
+                            deadUnits.Add(unit);
+                            units.Remove(unit);
+                        }
                     }
                     else
-                        appliedDelta.UpdatedUnits.Add(unit);
-                }
-                else
-                {
-                    //创建单位
-                    appliedDelta.AddedUnits.Add(CreatUnit(data));
+                    {
+                        //创建单位
+                        CreatUnit(data);
+                    }
                 }
             }
             //更新涉及的城市
-            foreach (var data in msg.CityDatas)
+            if(msg.CityDatas  != null)
             {
-                City city = TryGetCity(data.Id);
-                if (city != null)
+                foreach (var data in msg.CityDatas)
                 {
-                    city.UpdateProperty(data);
-                    appliedDelta.UpdatedCities.Add(city);
-                }
-                else
-                {
-                    //创建城市
-                    appliedDelta.AddedCities.Add(CreatCity(data));
+                    City city = TryGetCity(data.Id);
+                    if (city != null)
+                    {
+                        city.UpdateProperty(data);
+                    }
+                    else
+                    {
+                        //创建城市
+                        CreatCity(data);
+                    }
                 }
             }
             //更新玩家数据
-            foreach(var data in msg.PlayerDatas)
+            if(msg.PlayerDatas != null)
             {
-                PlayerState player = TryGetPlayer(data.Id);
-                player.UpdateState(data);
-                appliedDelta.UpdatedPlayers.Add(player);
+                foreach (var data in msg.PlayerDatas)
+                {
+                    PlayerState player = TryGetPlayer(data.Id);
+                    player.UpdateState(data);
+                }
             }
-            return appliedDelta;
         }
-        public Unit CreatUnit(UnitData unitData)
+        public void CreatUnit(UnitData unitData)
         {
             Unit newUnit = new Unit(unitData.Id, unitData.Owner, unitData.Position, GetUnitInfo(unitData.Type));
             units.Add(newUnit);
-            return newUnit;
         }
-        public City CreatCity(CityData cityData)
+        public void CreatCity(CityData cityData)
         {
             City newCity = new City(cityData.Id, cityData.Owner, cityData.Name, cityData.Position, GetCityInfo(0));
             cities.Add(newCity);
-            return newCity;
         }
         #endregion
 

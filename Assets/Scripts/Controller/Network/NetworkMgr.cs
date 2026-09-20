@@ -32,9 +32,9 @@ namespace SparkAge.Controller.Network
         //GameController接口
         INetworkInput networkInput;
         public void SetNetworkInput(INetworkInput networkInput) => this.networkInput = networkInput;
-        //消息队列
-        Queue<GameStateDeltaMsg> gameStateDeltaMsgQueue = new();
-        public Queue<GameStateDeltaMsg> GameStateDeltaMsgQueue => gameStateDeltaMsgQueue;
+        //游戏初始化信息
+        bool isFirst = true;
+        GameUpdateMsg gameInitMsg;
 
 
         public override void Awake()
@@ -66,6 +66,7 @@ namespace SparkAge.Controller.Network
             NetworkServer.ReplaceHandler<SelMapMsg>(OnSelMapMsg);
 
             NetworkServer.ReplaceHandler<OrderMsg>(OnOrderMsg);
+            NetworkServer.ReplaceHandler<GameReadyMsg>(OnGameReadyMsg);
         }
         //联机房间消息处理器
         void OnPlayerNameMsg(NetworkConnectionToClient conn, PlayerNameMsg msg)
@@ -127,6 +128,10 @@ namespace SparkAge.Controller.Network
             NetworkServer.SendToAll(new GameMapMsg { mapId = mapId });
         }
         //游戏局内消息处理器
+        void OnGameReadyMsg(NetworkConnectionToClient conn, GameReadyMsg msg)
+        {
+            conn.Send(gameInitMsg);
+        }
         void OnOrderMsg(NetworkConnectionToClient conn, OrderMsg msg)
         {
             BaseOrder order = ToOrder(msg);
@@ -134,7 +139,9 @@ namespace SparkAge.Controller.Network
             if (result.Type == ExecuteResultType.Tip)
                 conn.Send(result.Tip);
             else
-                NetworkServer.SendToAll(result.GameStateDelta);
+            {
+                NetworkServer.SendToAll(result.GameUpdateMsg); 
+            }
         }
 
         #endregion
@@ -149,7 +156,7 @@ namespace SparkAge.Controller.Network
             NetworkClient.ReplaceHandler<GameMapMsg>(OnGameMapMsg);
 
             NetworkClient.ReplaceHandler<TipMsg>(OnTipMsg);
-            NetworkClient.ReplaceHandler<GameStateDeltaMsg>(OnGameStateDeltaMsg);
+            NetworkClient.ReplaceHandler<GameUpdateMsg>(OnGameUpdateMsg);
         }
         //联机房间消息处理器
         void OnPlayerIdMsg(PlayerIdMsg msg)
@@ -187,15 +194,16 @@ namespace SparkAge.Controller.Network
         {
             networkInput.ApplyTip(msg);
         }
-        void OnGameStateDeltaMsg(GameStateDeltaMsg msg)
+        void OnGameUpdateMsg(GameUpdateMsg msg)
         {
             if (NetworkServer.active) return;
-            if(networkInput == null)
+            if (isFirst)
             {
-                gameStateDeltaMsgQueue.Enqueue(msg);
+                networkInput.InitClientWorldState(msg);
+                isFirst = false;
                 return;
             }
-            networkInput.ApplySnapShot(msg);
+            networkInput.ApplyGameUpdate(msg);
         }
 
         #endregion
@@ -304,13 +312,17 @@ namespace SparkAge.Controller.Network
                     return null;
             }
         } 
+        public void SetGameInitMsg(GameUpdateMsg msg)
+        {
+            gameInitMsg = msg;
+        }
         public void SendOrder(BaseOrder order)
         {
             NetworkClient.Send(ToMsg(order));
         }
-        public void SendInitialSnapShot(GameStateDeltaMsg msg)
+        public void SendGameReady()
         {
-            NetworkServer.SendToAll(msg);
+            NetworkClient.Send(new GameReadyMsg { });
         }
         #endregion
     }

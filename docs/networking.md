@@ -1,5 +1,7 @@
 ﻿# 星火纪元 · 联机开发卡（NET-1 ~ NET-8）
 
+> **状态同步与表现层的重新设计见 [docs/sync-design.md](sync-design.md)**（一份消息 = 事实快照 + 演出指令；View/UI 全部改为订阅事件中心，Controller 不再直接调度 View）。
+
 > 本文档是联机部分的**执行卡集合**，每张卡都说明它在「游戏流程」和「代码架构」中的意义。
 > 关联：docs/tech.md §9（网络方案）、docs/design.md（策划）、docs/notes.md（决策记录）。
 
@@ -364,6 +366,30 @@ nm.ConnectFailed += msg => Debug.LogError($"连接失败：{msg}");
 > - 推荐"**一条扁平 OrderMsg + 一个集中翻译器**"（而不是每种 Order 各写一条消息）。
 > 三个注意点不变：①来源校验用 `conn` 反查槽位 playerId；②字段有效性按 type 约定并校验；③失败单发回执、成功广播全量快照。
 
+
+### NET-7 落地现状（客户端表现层）与剩余项
+
+**已实现（核对过代码）**
+- `NetworkMgr.OnGameStateDeltaMsg`：`if (NetworkServer.active) return;`（Host 不应用自己的快照）✓；`networkInput` 未就绪时入队 ✓
+- `GameController.ApplySnapShot`：`state.ApplySnapshot(msg)` → `AppliedDelta` → HUD / `UnitView`(Build/Update/Destroy) / `CityView`(Build/Update) ✓
+- `UnitView.UpdateUnit` = 直接改坐标（**瞬移**）；`CityView.UpadateCity` = 按 owner 重新上色（**城市易主会换色**）✓
+- `TipMsg` = 服务端拒绝命令时的提示 ✓
+
+**剩余 3 项（功能相关，建议补）**
+1. **选中状态未清理/刷新**：快照应用后若选中的单位已被销毁/移动，选中框与范围高亮会残留或指错位置。
+   → 应用快照后：选中的单位/城市若已不在 Model → `ClearSelection()`；若还在但位置变了 → 重新 `SelectUnit/SelectCity` 刷新。
+2. **发命令后没有锁输入**：客户端点完命令后 phase 仍是 PlayerTurn，玩家可以连点 → 连发多条命令（后发的可能被服务端拒绝）。
+   → 发送后切到"等待"状态（如 `OtherPhase` 或新增 `WaitingServer`），收到快照后再按 `CurrentPlayer == MyPlayerId` 解锁。
+3. **`UnitView.UpdateUnit` 直接索引 `unitObjs[unit]`**：若某单位只在 Updated 列表里而从未 Build（delta 顺序/边界情况），会 KeyNotFound。
+   → 改成 `TryGetValue` 兜底（没有就先 Build）。
+
+**动画（v2）：Hint 队列**
+- 新增 `HintMsg`（表现数据）：`type`（Move/AttackUnit/AttackCity/FoundCity/BuildUnit/TurnChange）+ `unitId` + `pathHex[]` + `targetId` + 标志位；
+- 服务端在**执行成功时**同时组 `Hint` 与 `Snapshot` 一起广播（Hint 的数据直接取自 `MoveResult.Path` / `AttackUnitResult.AttackerIsDead|DefenderIsDead|CanEnter` / `AttackCityResult.CityIsCaptured` 等已有返回值）；
+- 客户端：Hint 入队 → 逐条播放（**复用现有** `UnitView.MoveUnit / AttackUnit / AttackCity`）→ 每条播完应用最新快照 → 下一条；Host 收到 Hint 直接 return（本地已播）；
+- 最小版只做 **Move + AttackUnit**（最影响观感），其余动作保持"快照瞬变"。
+---
+
 ### NET-7 补充：动画（表现）如何同步
 
 **核心结论**：**快照只能保证"最终一致"，不能表达"过程"**。
@@ -488,3 +514,91 @@ nm.ConnectFailed += msg => Debug.LogError($"连接失败：{msg}");
 | NET-6 命令中继 | Controller（SubmitOrder 入口） | 否（走既有 Order） |
 | NET-7 状态同步 | Model/Serialization + Controller + View | 是（序列化快照） |
 | NET-8 掉线接管 | Controller/Network（控制者映射） | 否 |
+
+---
+
+## NET-7A 任务卡：客户端表现层收尾（3 个小项）
+
+**目标**：让客户端在收到快照后，选中状态、输入门控、边界情况都正确。
+
+**意义**：数据同步已经通了，但"选中框指错位置""连点发出多条命令""字典 KeyNotFound"这类问题会让联机体验看起来像 bug；这三项补完后，客户端表现才"干净可用"。
+
+**改动点与逻辑**
+1. **选中状态刷新**（`GameController.ApplySnapShot` 末尾）
+   - 若 `selectionView.SelectedUnit` 已不在 Model（被销毁）→ `ClearSelection()`；
+   - 若仍存在但位置/移动力变化 → 重新 `SelectUnit` 刷新选中框与范围高亮；
+   - 城市同理（选中城市被易主/不存在时清理）。
+2. **发命令后锁输入**
+   - 客户端 `SubmitOrder` 的"发送分支"里，把 phase 切到等待态（复用 `OtherPhase` 或新增 `WaitingServer`）；
+   - 收到快照后按 `state.CurrentPlayer == MyPlayerId` 决定 `PlayerTurn` / `OtherPhase`（这段已在 `ApplySnapShot` 里，只需保证发送后不会继续保持 PlayerTurn）。
+3. **`UnitView.UpdateUnit` 兜底**
+   - `unitObjs[unit]` 改为 `TryGetValue`：没有视觉对象就先 `BuildUnit`，避免 delta 边界情况抛异常。
+
+**验收**
+- [ ] 客户端：选中单位 → 对方让它移动/死亡 → 本端选中框与范围正确（不残留、不指错）
+- [ ] 客户端：连续点击目标格只发出一次命令（等待期内不再发）
+- [ ] 收到只含 Updated 不含 Added 的单位时不会抛异常
+- [ ] 提交：`fix: client selection refresh, input lock after order, safe unit view update`
+
+**不做**：动画（NET-7B）。
+
+---
+
+## NET-7B 任务卡：动画同步最小版（Hint 队列，只做移动 + 攻击）
+
+**目标**：客户端能看到单位"走过去"和"打起来"，而不是瞬移。
+
+**意义**：快照只能表达终态，动画需要过程信息。做法是把服务端执行时已知的过程数据（路径/死亡标志）作为 Hint 一起下发，客户端复用现有 View 动画方法播放 —— 这是"表现层同步"与"状态同步"的分工点。
+
+**关键 API / 数据结构**
+- 新增 `HintMsg : NetworkMessage`：`type`（Move / AttackUnit）、`unitId`、`targetUnitId`、`path`（HexCoord 数组）、`attackerIsDead`、`defenderIsDead`、`canEnter`；`SlotData[]` 已验证自定义 struct 数组可序列化，HexCoord 同理；
+- 服务端发送：`NetworkServer.SendToAll(hintMsg)`（与快照同一次执行里发出）；
+- 客户端接收：`NetworkClient.ReplaceHandler<HintMsg>(...)`，**Host 直接 return**；
+- 客户端播放：复用 `UnitView.MoveUnit(unit, path)` / `UnitView.AttackUnit(attacker, defender, attackerIsDead, defenderIsDead, canEnter, path)`。
+
+**服务端改动**
+- 在 `GameController.ExecuteOrder` 成功分支里，用已有返回值构造 Hint：
+  - Move → `result.Path`
+  - AttackUnit → `result.Path` / `AttackerIsDead` / `DefenderIsDead` / `CanEnter`
+- `ExecuteResult` 扩展为可同时携带 Hint 与 Delta（例如加 `bool HasHint; HintMsg Hint;`），`NetworkMgr.OnOrderMsg` 广播时两者一起发。
+
+**客户端改动（动画队列）**
+- 收到 Hint → 入队 `Queue<HintMsg>`；
+- **Hint 播放期间把快照缓存起来（只保留最新一条）**，不要立刻应用，否则动画会被瞬移打断；
+- Update 里逐条播放：调 View 动画 → 等动画完成事件（`UnitMoveEvent` / `AttackUnitEvent`）→ 应用最新缓存快照 → 下一条；
+- Host 既不收 Hint 也不入队（`if (NetworkServer.active) return;`）。
+
+**验收**
+- [ ] A 端移动单位 → B 端**看到沿路径行走**（不是瞬移）
+- [ ] A 端攻击单位 → B 端看到攻击过程与死亡消失
+- [ ] AI（服务端）行动在客户端同样可见，且多条行动按顺序播放、不重叠
+- [ ] 动画期间不会因快照覆盖而瞬移/闪烁；播完状态与快照一致
+- [ ] 提交：`feat: hint-based animation sync (move/attack)`
+
+**不做**：建城/造兵/易主的 Hint（先走快照瞬变，后续按同一模式补）。
+
+### Hint 与 GameStateDelta：分还是合？
+
+**概念上必须分开（不要塞进同一个结构体）**，因为两者性质完全不同：
+
+| 维度 | GameStateDelta（状态） | Hint（表现） |
+|---|---|---|
+| 回答的问题 | "现在是什么" | "刚刚是怎么变成这样的" |
+| 内容 | 单位/城市的最终位置、血量、归属、回合、当前玩家 | 移动路径、双方是否死亡、是否占领、是否进格 |
+| 生命周期 | **持久**（存档、重连补偿、校验、将来回放的基础） | **一次性**（播完即可丢；新加入/重连者不需要历史动画） |
+| 与命令的数量关系 | 一条命令 = 一条终态 | 一条命令可能对应**多条**表现步骤（靠近→打击→死亡→进格） |
+| 可否丢弃 | 丢一次可能造成显示错误/跳变 | 丢了只影响观感 |
+| 是否可跳过 | 必须应用 | 可跳过（低配/加速/跳过动画模式） |
+
+把 path、死亡顺序这类"过程信息"塞进状态消息，会让状态里混进**表现层字段**（状态本身并不需要路径），存档/回放/校验时都是噪声。
+
+**传输上可以合并（推荐做法）**：用一条 `GameUpdateMsg` 包装两者
+
+```
+GameUpdateMsg { GameStateDeltaMsg Delta; HintMsg Hint; }   // Hint 可为 None
+```
+
+- 好处：**只发一次**（省一次 SendToAll 与一次打包），但逻辑上仍分两层：客户端先按 Hint 播动画，播完再应用 Delta；
+- 若不合并（分两条消息）：**两条都要走默认 Reliable 通道**才保序（先 Hint 后 Delta）；若用了 Unreliable 通道，顺序不保证 → 还是合并成一条更省心。
+
+**结论**：数据结构分开、传输合并成一条消息；`Hint` 允许为空（None），表示"这次没有需要播放的动画，直接应用 Delta"。

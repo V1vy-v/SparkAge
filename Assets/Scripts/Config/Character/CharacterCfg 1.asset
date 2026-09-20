@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Id: 1
   Name: "\u54E5\u4F26\u6BD4\u4E9A"
-  Description: 
+  Description: 111
   CityNames:
-  - 
-  - 
+  - "\u9EA6\u514B\u65AF"
+  - "\u7279\u91CC\u8499"
+  - "\u5821\u5792\u5C71\u57CE"
   Prefab: {fileID: 0}

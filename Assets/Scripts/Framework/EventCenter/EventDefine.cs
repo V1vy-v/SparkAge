@@ -8,60 +8,50 @@ namespace SparkAge.Framework.EventCenter
 {
     public class EventDefine
     {
+        public class MoveUnitEvent
+        {
+            public Unit Unit;
+            public MoveUnitEvent(Unit unit)
+            {
+                Unit = unit;
+            }
+        }
         public class BuildUnitEvent
         {
             public City City;
-            public Unit BuiltUnit;
-            public BuildUnitEvent(City city, Unit builtUnit)
+            public BuildUnitEvent(City city)
             {
                 City = city;
-                BuiltUnit = builtUnit;
-            }
-        }
-        public class UnitMoveEvent
-        {
-            public Unit unit;
-            public List<HexCoord> path;
-            public bool isMoving;
-            public UnitMoveEvent(Unit unit, List<HexCoord> path, bool isMoving)
-            {
-                this.unit = unit;
-                this.path = path;
-                this.isMoving = isMoving;
             }
         }
         public class FoundCityEvent
         {
             public City City;
-            public Unit ConsumedSettler;
-            public FoundCityEvent(City city,Unit settler)
+            public FoundCityEvent(City city)
             {
                 City = city;
-                ConsumedSettler = settler;
             }
         }
         public class AttackUnitEvent
         {
             public Unit Attacker;
-            public bool AttackerIsDead;
-            public AttackUnitEvent(Unit attacker, bool attackerIsDead)
+            public Unit Defender;
+            public AttackUnitEvent(Unit attacker, Unit defender)
             {
                 Attacker = attacker;
-                AttackerIsDead = attackerIsDead;
+                Defender = defender;
             }
         }
         public class AttackCityEvent
         {
             public Unit Attacker;
-            public City AttackedCity;
+            public City City;
             public bool CityIsCapture;
-            public bool DefenderIsDead;
-            public AttackCityEvent(Unit attacker, City city, bool cityIsCapture,bool defenderIsDead)
+            public AttackCityEvent(Unit attacker, City city, bool cityIsCapture)
             {
-                Attacker= attacker;
-                AttackedCity = city;
+                Attacker = attacker;
+                City = city;
                 CityIsCapture = cityIsCapture;
-                DefenderIsDead = defenderIsDead;
             }
         }
 

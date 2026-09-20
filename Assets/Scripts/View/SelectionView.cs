@@ -1,3 +1,4 @@
+using SparkAge.Controller.Network;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
@@ -56,6 +57,27 @@ namespace SparkAge.View
             BuildMoveAndAttackObjs();
         }
 
+        private void Start()
+        {
+            EventCenter.Instance.AddListener<MoveUnitEvent>(e => 
+            {
+                SelectUnit(e.Unit);
+            });
+            EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
+            {
+                if(!e.Attacker.IsDead)
+                    SelectUnit(e.Attacker);
+                else
+                    ClearAll();
+            });
+            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
+            {
+                if (!e.Attacker.IsDead)
+                    SelectUnit(e.Attacker);
+                else
+                    ClearAll();
+            });
+        }
 
         /// <summary>
         /// 创建高亮六边形对象和单位选中框
@@ -170,22 +192,23 @@ namespace SparkAge.View
         /// <summary>
         /// 隐藏地块高亮
         /// </summary>
-        private void ClearHighlight()
+        public void ClearHighlight()
         {
             highlight.gameObject.SetActive(false);
         }
         /// <summary>
         /// 实现点击选中单位和显示可移动范围
         /// </summary>
-        private void SelectUnit(Unit unit)
+        public void SelectUnit(Unit unit)
         {
             //高亮选中框
             unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
             unitHighlight.gameObject.SetActive(true);
+            ShowHighlight(unit.Position);
 
             ClearaRange();
 
-            if (unit.Owner != state.CurrentPlayer)
+            if (unit.Owner != NetworkMgr.Instance.MyPlayerId)
                 return;
 
             //计算可移动范围
@@ -197,7 +220,7 @@ namespace SparkAge.View
         /// <summary>
         /// 隐藏选中框和范围对象
         /// </summary>
-        private void ClearSelection()
+        public void ClearSelection()
         {
             //隐藏选中框
             unitHighlight.gameObject.SetActive(false);
@@ -210,7 +233,7 @@ namespace SparkAge.View
         /// 显示可到达范围
         /// </summary>
         /// <param name="reachableHex"></param>
-        private void ShowRange()
+        public void ShowRange()
         {
             //显示可到达范围对象
             int i = 0;
@@ -231,12 +254,17 @@ namespace SparkAge.View
         /// <summary>
         /// 隐藏所有范围对象
         /// </summary>
-        private void ClearaRange()
+        public void ClearaRange()
         {
             foreach (var obj in moveObjs)
                 obj.SetActive(false);
             foreach (var obj in attackObjs)
                 obj.SetActive(false);
+        }
+        public void ClearAll()
+        {
+            ClearHighlight();
+            ClearSelection();
         }
     }
 }
