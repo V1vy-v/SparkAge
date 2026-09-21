@@ -77,18 +77,22 @@ namespace SparkAge.Model.Ai
                 if (warrior.Type == UnitType.Settler || warrior.Owner != playerId || usedUnits.Contains(warrior.ID))
                     continue;
 
-                usedUnits.Add(warrior.ID);
                 var (moveTiles, attackTiles) = state.GetReachableTiles(warrior);
                 if (attackTiles.Count > 0)
                 {
                     HexCoord tarHex = attackTiles.First();//first自带随机属性
-                    if (state.GetUnitAt(tarHex) is Unit u)
+                    Unit targetUnit = state.GetUnitAt(tarHex);
+                    if (targetUnit != null)
                     {
-                        return new AttackUnitOrder(state.CurrentPlayer, warrior.ID, u.ID);
+                        usedUnits.Add(warrior.ID);
+                        return new AttackUnitOrder(playerId, warrior.ID, targetUnit.ID);
                     }
-                    else if (state.GetCityAt(tarHex) is City c)
+
+                    City targetCity = state.GetCityAt(tarHex);
+                    if (targetCity != null)
                     {
-                        return new AttackCityOrder(state.CurrentPlayer, warrior.ID, c.ID);
+                        usedUnits.Add(warrior.ID);
+                        return new AttackCityOrder(playerId, warrior.ID, targetCity.ID);
                     }
                 }
             }

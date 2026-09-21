@@ -603,7 +603,8 @@ namespace SparkAge.Controller
             }
 
             //更新表现层
-            phase = GamePhase.Animating;
+            if (IsMyTurn)
+                phase = GamePhase.Animating;
             unitView.MoveUnit(unit, result.Path);
 
             return new ExecuteResult
@@ -716,7 +717,8 @@ namespace SparkAge.Controller
                 return Fail(GetAttackUnitFailTip(result.Reason));
 
             //更新表现层
-            phase = GamePhase.Animating;
+            if (IsMyTurn)
+                phase = GamePhase.Animating;
             unitView.AttackUnit(attacker, defender, result.CanEnter, result.Path);
 
             return new ExecuteResult
@@ -759,7 +761,8 @@ namespace SparkAge.Controller
                 return Fail(GetAttackCityFailTip(result.Reason));
 
             //更新表现层
-            phase = GamePhase.Animating;
+            if (IsMyTurn)
+                phase = GamePhase.Animating;
             unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path);
 
             return new ExecuteResult

@@ -9,7 +9,7 @@
 3. 执行对话每完成一个任务，更新 docs/progress.md（做了什么、结果、阻塞点）。
 4. 两个对话看到对方更新的文件时，以文件内容为最新事实。
 
-## 当前状态：W3.1 完成 → W3.2 待开始（城市 + 生产）
+## 当前状态：联机基础 + AI 重写完成 → 下一步 NET-7 状态同步/表现层收尾
 
 ## 里程碑
 ### W1（完成）
@@ -68,6 +68,13 @@
 
 
 
+## 2026-09-21 NET-8 AI 重写（代码完成）
+- `Model/Ai/AiDecider.cs`：纯 C# 决策，负责城市造兵、移民建城、攻击、移动、结束回合。
+- `Controller/Ai/AiDriver.cs`：服务端驱动循环，按 AI 玩家推进，带步数上限和节流；不依赖 View。
+- `NetworkMgr.ExecuteAndBroadcast`：远程人类命令与 AI 命令共用执行、Tip 回执和状态广播入口。
+- `GameController.TryStartAi/RunAiSequence`：`EndPhase` 后检测 AI，启动驱动并在结束后恢复 Host phase。
+- Review 修复：AI 无攻击目标时不再提前占用 `usedUnits`；Host 只在本地玩家回合进入 `Animating`，避免远程玩家操作后 Host phase 卡死。
+- 下一步：NET-7 状态同步/表现层收尾。
 ## 联机开发计划（NET-1 ~ NET-8）
 
 详见 docs/networking.md。当前状态：UI 面板（Begin/Login/Connect/Room）已拼好；NetworkSession 与 RoomState 为空壳；GameController 仍从 GameCfg 读取开局配置。下一步从 NET-1（登录昵称）开始。
