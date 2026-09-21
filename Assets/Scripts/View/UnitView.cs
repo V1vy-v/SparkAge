@@ -123,8 +123,7 @@ namespace SparkAge.View
         {
             yield return StartCoroutine(WalkSteps(unit, path, path.Count - 1));
             
-            if(state.CurrentPlayer == NetworkMgr.Instance.MyPlayerId)
-                EventCenter.Instance.EventTrigger<MoveUnitEvent>(new MoveUnitEvent(unit));
+            EventCenter.Instance.EventTrigger<MoveUnitEvent>(new MoveUnitEvent(unit));
         }
         public void AttackUnit(Unit attacker, Unit defender, bool canEnter, List<HexCoord> path)
         {
@@ -153,8 +152,7 @@ namespace SparkAge.View
             if (defender.IsDead)
                 DestroyUnit(defender);
 
-            if (state.CurrentPlayer == NetworkMgr.Instance.MyPlayerId)
-                EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, defender));
+            EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, defender));
         }
 
         /// <summary>
@@ -181,8 +179,7 @@ namespace SparkAge.View
                 unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
             }
 
-            if (state.CurrentPlayer == NetworkMgr.Instance.MyPlayerId)
-                EventCenter.Instance.EventTrigger<AttackCityEvent>(new AttackCityEvent(attacker, city, cityIsCaptured));
+            EventCenter.Instance.EventTrigger<AttackCityEvent>(new AttackCityEvent(attacker, city, cityIsCaptured));
         }
     }
 }

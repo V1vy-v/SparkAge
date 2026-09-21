@@ -17,6 +17,6 @@ MonoBehaviour:
   Atk: 4
   Def: 1
   Hp: 10
-  Movement: 2
+  Movement: 4
   Cost: 5
   Prefab: {fileID: 562885717394101087, guid: 7ee47d4e6cad36a458e03305a635d720, type: 3}

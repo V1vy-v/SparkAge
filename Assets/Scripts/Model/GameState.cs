@@ -214,26 +214,21 @@ namespace SparkAge.Model
         /// </summary>
         /// <param name="attacker"></param>
         /// <returns></returns>
-        public HexCoord AiFindTarget(Unit attacker)
+        public List<HexCoord> AiFindTarget(Unit attacker)
         {
-            HexCoord res = attacker.Position;
-            int curDis = 9999;
+            List<HexCoord> res = new List<HexCoord>();
             foreach (Unit unit in units)
             {
-                int d = unit.Position.DistanceTo(attacker.Position);
-                if (d < curDis && unit.Owner != attacker.Owner)
+                if (unit.Position.DistanceTo(attacker.Position) < 8.0f  && unit.Owner != attacker.Owner)
                 {
-                    res = unit.Position;
-                    curDis = d;
+                    res.Add(unit.Position);
                 }
             }
             foreach (City city in cities)
             {
-                int d = city.Position.DistanceTo(attacker.Position);
-                if (city.Position.DistanceTo(attacker.Position) < curDis && city.Owner != attacker.Owner)
+                if (city.Position.DistanceTo(attacker.Position) < 8.0f && city.Owner != attacker.Owner)
                 {
-                    res = city.Position;
-                    curDis = d;
+                    res.Add(city.Position);
                 }
             }
             return res;
@@ -511,7 +506,7 @@ namespace SparkAge.Model
             return new MoveResult(true, MoveFailReason.Success, pathRes.Path);
         }
 
-        public enum FoundCityFailReason { Success, WrongUnitID, NoAccess, NotSettler, Unbuildable, OccupiedByUnit, OccupiedByCity, Limited }
+        public enum FoundCityFailReason { Success, WrongUnitID, NoAccess, NotSettler, Unbuildable, OccupiedByUnit, OccupiedByCity}
         public readonly struct FoundCityResult
         {
             public readonly bool Success;

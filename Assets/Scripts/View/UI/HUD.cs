@@ -14,6 +14,7 @@ namespace SparkAge.View.UI
         protected override void Init()
         {
             txtTurnNum.text = "当前回合：1";
+            txtTips.alpha = 0;
 
             btnEndTurn.onClick.AddListener(() =>
             {
@@ -30,16 +31,20 @@ namespace SparkAge.View.UI
             txtCurPlayer.SetText("当前玩家：" + name);
             txtTurnNum.SetText("当前回合：{0}", turnNum);
         }
+
+        Coroutine fadeOut;
         public void UpdateTips(string text)
         {
-            StopCoroutine(FadeOut());
+            if(fadeOut != null)
+            {
+                StopCoroutine(fadeOut);
+            }
 
             txtTips.SetText(text);
             txtTips.alpha = 1.0f;
 
-            StartCoroutine(FadeOut());
+            fadeOut = StartCoroutine(FadeOut());
         }
-
         WaitForSeconds wait = new WaitForSeconds(3);
         IEnumerator FadeOut()
         {

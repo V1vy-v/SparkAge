@@ -1,4 +1,4 @@
-﻿# 星火纪元 · 联机开发卡（NET-1 ~ NET-8）
+﻿# 星火纪元 · 联机开发卡（NET-1 ~ NET-9）
 
 > **状态同步与表现层的重新设计见 [docs/sync-design.md](sync-design.md)**（一份消息 = 事实快照 + 演出指令；View/UI 全部改为订阅事件中心，Controller 不再直接调度 View）。
 
@@ -490,7 +490,7 @@ nm.ConnectFailed += msg => Debug.LogError($"连接失败：{msg}");
 待办（独立功能，非本卡）：给 AI 槽**随机分配且不与人类重复**的角色（当前都落 0 号）。
 ---
 
-## NET-8（可选）：掉线接管与重连
+## NET-9（可选）：掉线接管与重连
 
 **目标**：远端玩家掉线时由 AI 接管该槽位，避免对局中断。
 
@@ -513,7 +513,7 @@ nm.ConnectFailed += msg => Debug.LogError($"连接失败：{msg}");
 | NET-5 开局 | Controller（场景加载/StartGame）+ Model 输入（GameSetUpInfo） | 是（只读输入） |
 | NET-6 命令中继 | Controller（SubmitOrder 入口） | 否（走既有 Order） |
 | NET-7 状态同步 | Model/Serialization + Controller + View | 是（序列化快照） |
-| NET-8 掉线接管 | Controller/Network（控制者映射） | 否 |
+| NET-9 掉线接管 | Controller/Network（控制者映射） | 否 |
 
 ---
 
@@ -602,3 +602,106 @@ GameUpdateMsg { GameStateDeltaMsg Delta; HintMsg Hint; }   // Hint 可为 None
 - 若不合并（分两条消息）：**两条都要走默认 Reliable 通道**才保序（先 Hint 后 Delta）；若用了 Unreliable 通道，顺序不保证 → 还是合并成一条更省心。
 
 **结论**：数据结构分开、传输合并成一条消息；`Hint` 允许为空（None），表示"这次没有需要播放的动画，直接应用 Delta"。
+
+---
+
+## NET-8 任务卡：AI 重写（服务端输入源 + 统一命令广播）
+
+> 执行前置：当前未提交的同步/表现改动先单独提交，保证 AI 重写是一个可回滚的独立提交。本卡不改同步协议，只重排 AI 驱动链路。
+> 卡号说明：原“掉线接管与重连”后移为 NET-9，避免与 AI 重写同名。
+
+### 为什么现有 AI 不满足联网
+
+| # | 现状 | 后果 |
+|---|---|---|
+| 1 | `HandleAiOrders/AiOrders` 是 `GameController` 内的旧协程，且入口已失效 | AI 依赖 Unity 帧循环和表现层，不是服务端输入源 |
+| 2 | `ai.DecideOrders()` 返回命令后没有被执行，`WaitUntil` 也没有被 `yield return` | AI 实际不会完整行动 |
+| 3 | 只有 `NetworkMgr.OnOrderMsg` 里的远程人类命令会广播 | AI 即使内部执行，客户端也收不到 |
+| 4 | `TryEndPhase` 发现下一位是 AI 时直接 `state.EndTurn()` | 把 AI 回合当成跳过；`EndTurn` 是轮末结算，不是跳过玩家 |
+| 5 | AI 决策写在 `Controller/AIOrders.cs`，与协程/表现耦合 | 不能单测，也不能复用到掉线接管 |
+
+**结论**：删除旧 AI 协程，不修旧 `HandleAiOrders`。改成“AiDecider 产出命令 → AiDriver 在服务端驱动 → NetworkMgr 统一执行并广播”。
+
+### 与现有代码的对应关系
+
+| 现有代码 | 新代码 | 负责什么 | 关键区别 |
+|---|---|---|---|
+| `Controller/AIOrders.cs` 中的 `AiOrders.DecideOrders()` | `Model/Ai/AiDecider.cs` 中的 `AiDecider.Decide()` | **决策**：只回答“AI 下一步应该提交哪一条 Order” | 不引用 Unity；可以单测；不负责执行和广播 |
+| `GameController.AiOrders()` 协程 | `Controller/Ai/AiDriver.cs` 中的 `Run()` | **驱动**：轮到 AI 时循环调用决策，执行命令，按间隔继续下一条 | 只在服务端运行；调用统一执行广播入口；不依赖 View 动画 |
+| `GameController.HandleAiOrders()` | `GameController` 在 EndPhase 后启动 AiDriver | **入口**：判断当前玩家是不是 AI，并启动驱动 | 由回合推进触发，不再由失效的旧入口触发 |
+| `NetworkMgr.OnOrderMsg` 中“执行 + 广播”的代码 | `NetworkMgr.ExecuteAndBroadcast()` | **权威执行与广播**：人类命令和 AI 命令共用 | 不再让 AI 走内部私有调用 |
+
+一句话：**AiDecider 是原来的“军师”，AiDriver 是原来的“协程循环”；NetworkMgr 是新增的“传令与广播口”。**
+
+### 统一链路
+
+```text
+远程人类：OrderMsg → NetworkMgr.OnOrderMsg → NetworkMgr.ExecuteAndBroadcast(order, conn)
+AI：      AiDecider.Decide → AiDriver → NetworkMgr.ExecuteAndBroadcast(order, null)
+```
+
+### 为什么 AiDriver 不放在网络层
+
+`AiDriver` 的职责是“在服务端驱动 AI 回合”：判断当前 AI 要执行哪一条命令、是否继续下一条、何时停止。它属于 Controller 层的运行时流程，不属于网络传输层。
+
+它只是需要依赖一个服务端命令出口：
+
+```text
+GameController（回合推进）
+    → AiDriver（AI 回合驱动，Controller/Ai）
+        → AiDecider（AI 决策，Model/Ai）
+        → NetworkMgr.ExecuteAndBroadcast（服务端执行 + 广播，Controller/Network）
+```
+
+因此：
+
+- `AiDecider` 放 `Model/Ai`：纯决策，不依赖 Unity；
+- `AiDriver` 放 `Controller/Ai`：只负责服务端驱动循环；
+- `NetworkMgr` 放 `Controller/Network`：只负责网络边界、执行入口和广播；
+- `GameController` 负责在回合推进后启动 AiDriver。
+
+第一版可以让 AiDriver 直接调用 `NetworkMgr.Instance.ExecuteAndBroadcast`，不额外抽接口；目录归类仍保持职责清晰。
+`ExecuteAndBroadcast` 放在 `NetworkMgr`（网络边界）：内部调用 `networkInput.ExecuteOrder(order)`，Tip 单发给发起者，GameUpdate 广播给所有客户端。`GameController.ExecuteOrder` 仍只负责游戏规则分发，不负责网络发送。
+
+### 落地步骤
+
+1. **`Model/Ai/AiDecider.cs`（纯 C#）**
+   - `Decide(GameState state, int playerId) → BaseOrder`。
+   - 迁移现有优先级：城市造兵 → 移民建城 → 战士攻击 → 向最近敌人移动 → `EndPhaseOrder`。
+   - 只使用 ID 生成 Order；不使用 UnityEngine；AiDecider 每局创建一个；每次轮到 AI 调用 `BeginTurn(playerId)` 清空本回合尝试记录，不要每回合 new。
+   - 这次只要求行为正确，不要求提高 AI 智力。
+
+2. **`Controller/Ai/AiDriver.cs`（服务端驱动）**
+   - 只允许在 `NetworkServer.active` 时运行。
+   - `while (当前玩家是 AI)`：`Decide` → `ExecuteAndBroadcast` → 非 EndPhase 时按 `aiStepDelay` 等待。
+   - 每回合设置最大步数，防止失败命令导致死循环。
+   - 不等待客户端动画，不依赖 View；驱动结束时按当前玩家恢复 Host 本地 phase。
+   - 由 `GameController` 创建并 `StartCoroutine`，不新增场景挂载脚本。
+
+3. **`NetworkMgr` 增加统一服务端入口**
+   - `OnOrderMsg` 和 `AiDriver` 都调用同一个 `ExecuteAndBroadcast`。
+   - 统一处理 `ExecuteResultType.Tip` 与 `ExecuteResultType.GameUpdate`。
+   - 本卡不顺手改来源校验，来源校验仍在后续权威边界任务中处理。
+
+4. **`GameController` 清理旧 AI**
+   - 删除 `AiOrders` 字段、`HandleAiOrders()`、`AiOrders()` 协程和旧 `Controller/AIOrders.cs`。
+   - `TryEndPhase()` 删除“下一位是 AI 就 EndTurn”的分支，只执行 `state.EndPhase()`。
+   - `EndPhase` 后若服务端发现当前玩家是 AI：设置 `phase = GamePhase.AiPhase`，启动 `AiDriver`。
+   - AI 回合结束后：Host 根据当前玩家恢复 `PlayerTurn` 或 `OtherPhase`；非 Host 不启动 AiDriver，只按 GameUpdate 走 `OtherPhase`。
+
+### 验收
+
+- [ ] Host 中 1 个真人 + 3 个 AI：真人结束回合并轮到 AI 后，AI 会建城、造兵、移动、攻击并按节流逐步发生。
+- [ ] AI 执行到下一个真人玩家后停止，不会继续偷偷操作。
+- [ ] AI 的每次成功操作都通过同一广播链到达所有客户端。
+- [ ] `EndPhaseOrder` 不再直接调用 `EndTurn`；轮末结算仍由 `GameState.EndPhase` 的轮次边界触发。
+- [ ] 多个 AI 连续回合可正常跑完；最大步数保护生效。
+- [ ] `AiDecider` 不引用 UnityEngine；非 Host 不启动 AiDriver。
+- [ ] 提交：`feat: rewrite AI as server-side command source`
+
+### 本卡不做
+
+- AI 高级策略、难度分级、寻路优化；
+- NET-7 状态结构重构；
+- 掉线接管与重连（NET-9）；
+- 人类命令来源校验与完整反作弊。

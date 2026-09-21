@@ -59,19 +59,22 @@ namespace SparkAge.View
 
         private void Start()
         {
-            EventCenter.Instance.AddListener<MoveUnitEvent>(e => 
+            EventCenter.Instance.AddListener<MoveUnitEvent>(e =>
             {
+                if (NetworkMgr.Instance.MyPlayerId != state.CurrentPlayer) return;
                 SelectUnit(e.Unit);
             });
             EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
             {
-                if(!e.Attacker.IsDead)
+                if (NetworkMgr.Instance.MyPlayerId != state.CurrentPlayer) return;
+                if (!e.Attacker.IsDead)
                     SelectUnit(e.Attacker);
                 else
                     ClearAll();
             });
             EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
+                if (NetworkMgr.Instance.MyPlayerId != state.CurrentPlayer) return;
                 if (!e.Attacker.IsDead)
                     SelectUnit(e.Attacker);
                 else

@@ -1,9 +1,11 @@
 using Mirror;
 using SparkAge.Config;
+using SparkAge.Controller.Ai;
 using SparkAge.Controller.Network;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
+using SparkAge.Model.Ai;
 using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Orders;
@@ -44,9 +46,9 @@ namespace SparkAge.Controller
     {
         PlayerTurn,     //等待玩家输入
         OtherPhase,     //其他玩家操作中
-        AiPhase,        //Ai操作中
         GameOver,       //玩家失败
-        WaitingServer   //等待服务器消息
+        WaitingServer,  //等待服务器消息
+        Animating       //动画中
     }
     /// <summary>
     /// 游戏控制层
@@ -57,8 +59,8 @@ namespace SparkAge.Controller
         [SerializeField] CameraController CameraController; //相机控制器
 
         //控制层引用
-        AiOrders ai;
         GameSession session;
+        AiDriver aiDriver;
         //数据层引用
         GameState state;
         GameInfo gameInfo;
@@ -70,7 +72,7 @@ namespace SparkAge.Controller
 
         //控制器状态
         GamePhase phase = GamePhase.PlayerTurn;
-        bool isBlockingInput = false;
+        bool isAiTurn = false;
 
         public int MyPlayerId => NetworkMgr.Instance.MyPlayerId;
         public bool IsMyTurn => NetworkMgr.Instance.MyPlayerId == state.CurrentPlayer;
@@ -101,9 +103,9 @@ namespace SparkAge.Controller
                     HandlePlayerInput();
                     break;
                 case GamePhase.OtherPhase:
-                case GamePhase.AiPhase:
                 case GamePhase.GameOver:
                 case GamePhase.WaitingServer:
+                case GamePhase.Animating:
                     return;
             }
         }
@@ -128,11 +130,10 @@ namespace SparkAge.Controller
             state = new GameState(gameInfo, ConfigMgr.Instance.StaticInfo);
             state.Init();
 
-            ai = new AiOrders();
-            ai.Init(state);
-
             session = new GameSession();
             session.Init(NetworkMgr.Instance.Slots);
+
+            aiDriver = new AiDriver(state, session, new AiDecider(state));
 
             mapView = gameObject.AddComponent<MapView>();
             mapView.Init(state, hexSize);
@@ -214,11 +215,13 @@ namespace SparkAge.Controller
         {
             EventCenter.Instance.AddListener<MoveUnitEvent>(e => 
             {
-                isBlockingInput = false;
+                if (!IsMyTurn) return;
+                RecoverPhase();
             });
             EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
             {
-                isBlockingInput = false;
+                if (!IsMyTurn) return;
+                RecoverPhase();
                 UIManager.Instance.GetPanel<SelCityPanel>().HideMe();
                 if (e.Attacker.IsDead)
                 {
@@ -231,7 +234,8 @@ namespace SparkAge.Controller
             });
             EventCenter.Instance.AddListener<AttackCityEvent>(e =>
             {
-                isBlockingInput = false;
+                if (!IsMyTurn) return;
+                RecoverPhase();
                 UIManager.Instance.GetPanel<SelCityPanel>().HideMe();
                 if (e.Attacker.IsDead)
                 {
@@ -318,7 +322,7 @@ namespace SparkAge.Controller
 
             //============= 鼠标输入 ==============
             //输入锁定：动画锁定+UI锁定
-            if (isBlockingInput && UIManager.Instance.IsBlockingUI || UIManager.Instance.IsPointerOverUI)
+            if (phase == GamePhase.Animating || UIManager.Instance.IsPointerOverUI)
                 return;
 
             //鼠标左键点击
@@ -375,34 +379,26 @@ namespace SparkAge.Controller
         /// <summary>
         /// 处理Ai决策
         /// </summary>
-        private void HandleAiOrders()
+        private void TryStartAi()
         {
-            ai.BeginAiPhase();
-            StartCoroutine(AiOrders());
+            if (isAiTurn) return;
+
+            if (!NetworkServer.active) return;
+
+            if (session.GetControllerType(state.CurrentPlayer) != ControllerType.AI) return;
+
+            isAiTurn = true;
+            StartCoroutine(RunAiSequence());
         }
-        IEnumerator AiOrders()
+        private IEnumerator RunAiSequence()
         {
-            BaseOrder order;
-            WaitUntil wu = new WaitUntil(() => !isBlockingInput);
-            int i = 1;
-            while (true)
-            {
-                if (i++ >= 100)
-                {
-                    TryEndPhase();
-                    break;
-                }
-                order = ai.DecideOrders();
-                if (order == null)
-                {
-                    TryEndPhase();
-                    break;
-                }
+            yield return null;
 
-                yield return null;
-            }
+            yield return StartCoroutine(aiDriver.Run(state.CurrentPlayer));
+
+            isAiTurn = false;
+            RecoverPhase();
         }
-
         //================== 网络交互相关 ===================
         #region 一、非主机客户端侧
 
@@ -413,9 +409,9 @@ namespace SparkAge.Controller
         private void SubmitOrder(BaseOrder order)
         {
             //先本地判断是否持有输入权限
-            if (order.PlayerId != state.CurrentPlayer || isBlockingInput)
+            if (order.PlayerId != state.CurrentPlayer || phase == GamePhase.Animating)
             {
-                UIManager.Instance.GetPanel<HUD>().UpdateTips("非当前玩家命令");
+                UIManager.Instance.GetPanel<HUD>().UpdateTips("非当前玩家命令/动画中");
                 return;
             }
 
@@ -439,9 +435,9 @@ namespace SparkAge.Controller
         /// <param name="msg"></param>
         public void ApplyGameUpdate(GameUpdateMsg msg)
         {
+            RecoverPhase();
             ApplyGameStateDelta(msg.Delta);
             ApplyHint(msg.Hint);
-            RecoverPhase();
         }
         private void ApplyGameStateDelta(GameStateDeltaMsg msg)
         {
@@ -481,7 +477,7 @@ namespace SparkAge.Controller
                 case HintType.MoveUnit:
                     unit = state.TryGetUnit(unitData.UnitId);
                     if (IsMyTurn)
-                        isBlockingInput = true;
+                        phase = GamePhase.Animating;
                     unitView.MoveUnit(unit, unitData.Path);
                     break;
                 case HintType.AttackUnit:
@@ -494,14 +490,14 @@ namespace SparkAge.Controller
                     else
                         defender = state.TryGetUnit(unitData.TargetUnitId);
                     if (IsMyTurn)
-                        isBlockingInput = true;
+                        phase = GamePhase.Animating;
                     unitView.AttackUnit(attacker, defender, unitData.CanEnter, unitData.Path);
                     break;
                 case HintType.AttackCity:
                     attacker = state.TryGetUnit(unitData.UnitId);
                     city = state.TryGetCity(unitData.TargetCityId);
                     if (IsMyTurn)
-                        isBlockingInput = true;
+                        phase = GamePhase.Animating;
                     unitView.AttackCity(attacker, city, unitData.CityIsCaptured, unitData.Path);
                     break;
                 case HintType.EndPhase:
@@ -553,13 +549,7 @@ namespace SparkAge.Controller
             //更新回合数和当前玩家
             UIManager.Instance.GetPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
 
-            if (session.GetControllerType(state.CurrentPlayer) == ControllerType.AI)
-            {
-                Debug.Log("开始AI回合");
-                state.EndTurn();
-                UIManager.Instance.GetPanel<HUD>().UpdateHUD(gameInfo.GetPlayerInfo(state.CurrentPlayer).Name, state.TurnNumber);
-                phase = GamePhase.PlayerTurn;
-            }
+            TryStartAi();
 
             //全量更新
             List<UnitData> unitDatas = new List<UnitData>();
@@ -604,15 +594,16 @@ namespace SparkAge.Controller
         {
             Unit unit = state.TryGetUnit(unitId);
             if (unit == null)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail("移动失败：单位不存在");
 
             MoveResult result = state.MoveUnit(unit, tarHex);
             if (!result.Success)
             {
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail(GetMoveFailTip(result.Reason));
             }
 
             //更新表现层
+            phase = GamePhase.Animating;
             unitView.MoveUnit(unit, result.Path);
 
             return new ExecuteResult
@@ -642,10 +633,10 @@ namespace SparkAge.Controller
         {
             Unit unit = state.TryGetUnit(unitID);
             if (unit == null)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail("建城失败：单位不存在");
             FoundCityResult result = state.FoundCity(unit);
             if (!result.Success)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail(GetFoundCityFailTip(result.Reason));
 
             //更新表现层
             unitView.DestroyUnit(unit);
@@ -680,11 +671,11 @@ namespace SparkAge.Controller
         {
             City city = state.TryGetCity(cityID);
             if (city == null)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail("建造失败：城市不存在");
 
             BuildUnitResult result = state.BuildUnit(city, type);
             if (!result.Success)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail(GetBuildUnitFailTip(result.Reason));
 
             //更新表现层
             unitView.BuildUnit(result.Unit);
@@ -718,13 +709,14 @@ namespace SparkAge.Controller
             Unit attacker = state.TryGetUnit(attackerID);
             Unit defender = state.TryGetUnit(defenderID);
             if (attacker == null || defender == null)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail("攻击失败：攻击单位或目标单位不存在");
 
             AttackUnitResult result = state.AttackUnit(attacker, defender);
             if (!result.Success)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail(GetAttackUnitFailTip(result.Reason));
 
             //更新表现层
+            phase = GamePhase.Animating;
             unitView.AttackUnit(attacker, defender, result.CanEnter, result.Path);
 
             return new ExecuteResult
@@ -760,13 +752,14 @@ namespace SparkAge.Controller
             Unit attacker = state.TryGetUnit(attackerID);
             City city = state.TryGetCity(cityID);
             if (attacker == null || city == null)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail("攻击失败：攻击单位或目标城市不存在");
 
             AttackCityResult result = state.AttackCity(attacker, city);
             if (!result.Success)
-                return new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = "操作失败" } };
+                return Fail(GetAttackCityFailTip(result.Reason));
 
             //更新表现层
+            phase = GamePhase.Animating;
             unitView.AttackCity(attacker, city, result.CityIsCaptured, result.Path);
 
             return new ExecuteResult
@@ -796,7 +789,59 @@ namespace SparkAge.Controller
             };
 
         }
-        private UnitData Unit2Data(Unit unit) => new UnitData
+
+        /// <summary>
+        /// 工具类方法
+        /// </summary>
+        private static ExecuteResult Fail(string tip)
+            => new ExecuteResult { Type = ExecuteResultType.Tip, Tip = new TipMsg { Tip = tip } };
+        private static string GetMoveFailTip(MoveFailReason reason) => reason switch
+        {
+            MoveFailReason.WrongUnitID => "移动失败：单位不存在",
+            MoveFailReason.NoAccess => "移动失败：不是当前玩家的单位",
+            MoveFailReason.InvaildPos => "移动失败：目标格无法停留",
+            MoveFailReason.Unreachable => "移动失败：移动力不足",
+            MoveFailReason.NoPath => "移动失败：无法到达目标",
+            _ => "移动失败"
+        };
+        private static string GetFoundCityFailTip(FoundCityFailReason reason) => reason switch
+        {
+            FoundCityFailReason.WrongUnitID => "建城失败：单位不存在",
+            FoundCityFailReason.NoAccess => "建城失败：不是当前玩家的单位",
+            FoundCityFailReason.NotSettler => "建城失败：只有移民可以建城",
+            FoundCityFailReason.Unbuildable => "建城失败：该地块不可建城",
+            FoundCityFailReason.OccupiedByUnit => "建城失败：该地块已有单位",
+            FoundCityFailReason.OccupiedByCity => "建城失败：该地块已属于城市",
+            _ => "建城失败"
+        };
+        private static string GetBuildUnitFailTip(BuildUnitFailReason reason) => reason switch
+        {
+            BuildUnitFailReason.WrongCityID => "建造失败：城市不存在",
+            BuildUnitFailReason.NoAccess => "建造失败：不是当前玩家的城市",
+            BuildUnitFailReason.NotEnoughProduction => "建造失败：生产力不足",
+            BuildUnitFailReason.NoUnitSpawnNear => "建造失败：城市周围没有可用地块",
+            _ => "建造失败"
+        };
+        private static string GetAttackUnitFailTip(AttackUnitFailReason reason) => reason switch
+        {
+            AttackUnitFailReason.WrongUnitID => "攻击失败：单位不存在",
+            AttackUnitFailReason.NoAccess => "攻击失败：不是当前玩家的单位",
+            AttackUnitFailReason.IsSameOwner => "攻击失败：不能攻击己方单位",
+            AttackUnitFailReason.IsSettler => "攻击失败：移民不能攻击",
+            AttackUnitFailReason.Unreachable => "攻击失败：目标不在攻击范围内",
+            _ => "攻击失败"
+        };
+        private static string GetAttackCityFailTip(AttackCityFailReason reason) => reason switch
+        {
+            AttackCityFailReason.WrongUnitID => "攻击失败：单位不存在",
+            AttackCityFailReason.WrongCityID => "攻击失败：城市不存在",
+            AttackCityFailReason.NoAccess => "攻击失败：不是当前玩家的单位",
+            AttackCityFailReason.IsSameOwner => "攻击失败：不能攻击己方城市",
+            AttackCityFailReason.IsSettler => "攻击失败：移民不能攻击",
+            AttackCityFailReason.Unreachable => "攻击失败：目标城市不在攻击范围内",
+            _ => "攻击失败"
+        };
+        private static UnitData Unit2Data(Unit unit) => new UnitData
         {
             Id = unit.ID,
             Owner = unit.Owner,
@@ -806,15 +851,16 @@ namespace SparkAge.Controller
             MovementLeft = unit.MovementLeft,
             IsDead = unit.IsDead
         };
-        private CityData City2Data(City city) => new CityData
+        private static CityData City2Data(City city) => new CityData
         {
             Id = city.ID,
             Owner = city.Owner,
+            Name = city.Name,
             Position = city.Position,
             Production = city.Production,
             Hp = city.Hp,
         };
-        private PlayerData Player2Data(PlayerState player) => new PlayerData
+        private static PlayerData Player2Data(PlayerState player) => new PlayerData
         {
             Id = player.ID,
             IsAlive = player.IsAlive

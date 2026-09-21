@@ -135,15 +135,22 @@ namespace SparkAge.Controller.Network
         void OnOrderMsg(NetworkConnectionToClient conn, OrderMsg msg)
         {
             BaseOrder order = ToOrder(msg);
-            ExecuteResult result = networkInput.ExecuteOrder(order);
-            if (result.Type == ExecuteResultType.Tip)
-                conn.Send(result.Tip);
-            else
-            {
-                NetworkServer.SendToAll(result.GameUpdateMsg); 
-            }
+            ExecuteAndBroadcast(order, conn);
         }
+        public void ExecuteAndBroadcast(BaseOrder order, NetworkConnectionToClient requester = null)
+        {
+            ExecuteResult result = networkInput.ExecuteOrder(order);
 
+            if (result.Type == ExecuteResultType.Tip)
+            {
+                if (requester != null)
+                    requester.Send(result.Tip);
+
+                return;
+            }
+
+            NetworkServer.SendToAll(result.GameUpdateMsg);
+        }
         #endregion
 
         #region 2 客户端侧
