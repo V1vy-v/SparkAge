@@ -1,11 +1,9 @@
 using SparkAge.Config;
-using SparkAge.Controller.Network;
 using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
-using SparkAge.Model.Orders;
 using SparkAge.Model.Units;
 using System.Collections;
 using System.Collections.Generic;
@@ -23,84 +21,109 @@ namespace SparkAge.View
         float hexSize;
 
         //独占字段
-        Dictionary<Unit, GameObject> unitObjs = new Dictionary<Unit, GameObject>();// 单位->游戏对象的映射
-        public Dictionary<Unit, GameObject> UnitObjs => unitObjs;
+        Dictionary<int, GameObject> unitObjs = new Dictionary<int, GameObject>();// 单位->游戏对象的映射
+        public Dictionary<int, GameObject> UnitObjs => unitObjs;
+
 
         public void Init(GameState state, float hexSize)
         {
             this.state = state;
             this.hexSize = hexSize;
+
+            EventCenter.Instance.AddListener<InitialSettlers>(OnInitialSettlers);
+            EventCenter.Instance.AddListener<BuildUnitEvent>(OnBuildUnit);
+            EventCenter.Instance.AddListener<UpdateUnitEvent>(OnUpdateUnit);
+            EventCenter.Instance.AddListener<RemoveUnitEvent>(OnRemoveUnit);
+            EventCenter.Instance.AddListener<MoveUnitStartEvent>(OnMoveUnit);
+            EventCenter.Instance.AddListener<AttackUnitStartEvent>(OnAttackUnit);
+            EventCenter.Instance.AddListener<AttackCityStartEvent>(OnAttackCity);
         }
 
+        private void OnDestroy()
+        {
+            EventCenter.Instance.RemoveListener<InitialSettlers>(OnInitialSettlers);
+            EventCenter.Instance.RemoveListener<BuildUnitEvent>(OnBuildUnit);
+            EventCenter.Instance.RemoveListener<UpdateUnitEvent>(OnUpdateUnit);
+            EventCenter.Instance.RemoveListener<RemoveUnitEvent>(OnRemoveUnit);
+            EventCenter.Instance.RemoveListener<MoveUnitStartEvent>(OnMoveUnit);
+            EventCenter.Instance.RemoveListener<AttackUnitStartEvent>(OnAttackUnit);
+            EventCenter.Instance.RemoveListener<AttackCityStartEvent>(OnAttackCity);
+        }
+        public void OnInitialSettlers(InitialSettlers e)
+        {
+            foreach (var s in e.Settlers)
+                BuildUnit(s);
+        }
+        public void OnBuildUnit(BuildUnitEvent e)
+        {
+            BuildUnit(e.Unit);
+        }
+        public void OnUpdateUnit(UpdateUnitEvent e)
+        {
+            UpdateUnit(e.Unit);
+        }
+        public void OnRemoveUnit(RemoveUnitEvent e)
+        {
+            RemoveUnit(e.Unit);
+        }
+        public void OnMoveUnit(MoveUnitStartEvent e)
+        {
+            MoveUnit(e.Unit,e.Path);
+        }
+        public void OnAttackUnit(AttackUnitStartEvent e)
+        {
+            AttackUnit(e.Attacker, e.Defender, e.CanEnter, e.Path);
+        }
+        public void OnAttackCity(AttackCityStartEvent e)
+        {
+            AttackCity(e.Attacker, e.City, e.CityIsCapture, e.Path, e.DefenderUnits);
+        }
+
+        //================== 执行方法 =================
         /// <summary>
         /// 创建单位对象
         /// </summary>
-        public GameObject BuildUnit(Unit unit)
+        private GameObject BuildUnit(Unit unit)
         {
             UnitCfg cfg = null;
             foreach(var unitCfg in ConfigMgr.Instance.unitCfgs)
                 if(unitCfg.Type == unit.Type)
                     cfg = unitCfg;
             GameObject unitObj = Instantiate(cfg.Prefab);
-            unitObj.transform.Find("Marker").GetComponent<MeshRenderer>().material =
-                new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                {
-                    color = ViewTools.GetPlayerColor(unit.Owner)
-                };
-
-            unitObjs[unit] = unitObj;
+            unitObjs[unit.ID] = unitObj;
             unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
             return unitObj;
         }
         /// <summary>
-        /// 更新单位对象
+        /// 更新单位表现
         /// </summary>
         /// <param name="unit"></param>
-        public void UpdateUnit(Unit unit)
+        private void UpdateUnit(Unit unit)
         {
-            if(!unitObjs.TryGetValue(unit, out GameObject unitObj))
+            if (!unitObjs.TryGetValue(unit.ID, out GameObject unitObj))
             {
                 unitObj = BuildUnit(unit);
             }
-            unitObj.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
+
+            unitObj.transform.position =
+                HexLayout.HexToPixel(unit.Position, hexSize, 0.5f);
         }
         /// <summary>
         /// 销毁单位对象
         /// </summary>
         /// <param name="unit"></param>
-        public void DestroyUnit(Unit unit)
+        private void RemoveUnit(Unit unit)
         {
-            Destroy(unitObjs[unit]);
-            unitObjs.Remove(unit);
-        }
+            if (unit == null)
+                return;
 
-        private WaitForSeconds moveDeltaTime = new WaitForSeconds(0.5f);
-        IEnumerator WalkSteps(Unit unit, List<HexCoord> path, int endIdx)
-        {
-            Transform unitTrans = unitObjs[unit].transform;
-            for (int i = 0; i <= endIdx; i++)
-            {
-                Vector3 target = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
+            if (!unitObjs.TryGetValue(unit.ID, out GameObject obj))
+                return;
 
-                Vector3 dir = target - unitTrans.position;
-                dir.y = 0;
+            if (obj != null)
+                Destroy(obj);
 
-                unitTrans.rotation = Quaternion.LookRotation(dir);
-                while (Vector3.Distance(unitTrans.position, target) > 0.01f)
-                {
-                    unitTrans.position = Vector3.MoveTowards(
-                        unitTrans.position,
-                        target,
-                        4 * Time.deltaTime 
-                    );
-                    yield return null;
-                }
-                unitTrans.position = target;
-            }
-        }
-        IEnumerator AttackAnimation(Unit unit, HexCoord target)
-        {
-            yield return null;
+            unitObjs.Remove(unit.ID);
         }
 
         /// <summary>
@@ -108,11 +131,10 @@ namespace SparkAge.View
         /// </summary>
         /// <param name="unit"></param>
         /// <param name="tarHex"></param>
-        public void MoveUnit(Unit unit, List<HexCoord> path)
+        private void MoveUnit(Unit unit, List<HexCoord> path)
         {
             StartCoroutine(MoveUnitSequence(unit, path));
         }
-
         /// <summary>
         /// 单位移动协程，移动动画
         /// </summary>
@@ -123,9 +145,9 @@ namespace SparkAge.View
         {
             yield return StartCoroutine(WalkSteps(unit, path, path.Count - 1));
             
-            EventCenter.Instance.EventTrigger<MoveUnitEvent>(new MoveUnitEvent(unit));
+            EventCenter.Instance.EventTrigger<MoveUnitCompletedEvent>(new MoveUnitCompletedEvent(unit));
         }
-        public void AttackUnit(Unit attacker, Unit defender, bool canEnter, List<HexCoord> path)
+        private void AttackUnit(Unit attacker, Unit defender, bool canEnter, List<HexCoord> path)
         {
             StartCoroutine(AttackUnitSequence(attacker, defender, canEnter, path));
         }
@@ -141,18 +163,21 @@ namespace SparkAge.View
             //靠近目标单位
             yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
 
-            //停顿1秒暂且当做攻击动画
-            yield return new WaitForSeconds(1f);
+            //攻击动画
+            yield return StartCoroutine(AttackAnimation(attacker, defender.Position));
 
-            if (!attacker.IsDead && defender.IsDead && canEnter)
-                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
-            
+            if (!attacker.IsDead && defender.IsDead && canEnter &&
+                unitObjs.TryGetValue(attacker.ID, out GameObject attackerObj) && attackerObj != null)
+            {
+                attackerObj.transform.position = HexLayout.HexToPixel(defender.Position, hexSize, 0.5f);
+            }
+
             if (attacker.IsDead)
-                DestroyUnit(attacker);
+                RemoveUnit(attacker);
             if (defender.IsDead)
-                DestroyUnit(defender);
+                RemoveUnit(defender);
 
-            EventCenter.Instance.EventTrigger<AttackUnitEvent>(new AttackUnitEvent(attacker, defender));
+            EventCenter.Instance.EventTrigger<AttackUnitCompletedEvent>(new AttackUnitCompletedEvent(attacker, defender));
         }
 
         /// <summary>
@@ -163,23 +188,112 @@ namespace SparkAge.View
         /// <param name="cityIsCaptured"></param>
         /// <param name="path"></param>
         /// <param name="defenderIsDead"></param>
-        public void AttackCity(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path)
+        private void AttackCity(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, List<Unit> defeatedUnits)
         {
-            StartCoroutine(AttackCitySequence(attacker, city, cityIsCaptured, path));
+            StartCoroutine(AttackCitySequence(attacker, city, cityIsCaptured, path, defeatedUnits));
         }
-        IEnumerator AttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path)
+        IEnumerator AttackCitySequence(Unit attacker, City city, bool cityIsCaptured, List<HexCoord> path, List<Unit> defeatedUnits)
         {
             //靠近目标单位
             yield return StartCoroutine(WalkSteps(attacker, path, path.Count - 2));
-            //停顿1秒暂且当做攻击动画
-            yield return new WaitForSeconds(1f);
+            //攻击动画
+            yield return StartCoroutine(AttackAnimation(attacker, city.Position));
 
             if (cityIsCaptured)
             {
-                unitObjs[attacker].transform.position = HexLayout.HexToPixel(path[path.Count - 1], hexSize, 0.5f);
+                if (unitObjs.TryGetValue(attacker.ID, out GameObject attackerObj) && attackerObj != null)
+                {
+                    attackerObj.transform.position = HexLayout.HexToPixel(city.Position, hexSize, 0.5f);
+                }
             }
 
-            EventCenter.Instance.EventTrigger<AttackCityEvent>(new AttackCityEvent(attacker, city, cityIsCaptured));
+            foreach (var unit in defeatedUnits)
+            {
+                if (unit != null && unitObjs.ContainsKey(unit.ID))
+                    RemoveUnit(unit);
+            }
+
+            EventCenter.Instance.EventTrigger<AttackCityCompletedEvent>(new AttackCityCompletedEvent(attacker, city, cityIsCaptured));
+        }
+
+
+        //================== 动画 =================
+        IEnumerator WalkSteps(Unit unit, List<HexCoord> path, int endIdx)
+        {
+            if (unit == null || !unitObjs.TryGetValue(unit.ID, out GameObject unitObj) || unitObj == null)
+                yield break;
+
+            Transform unitTrans = unitObj.transform;
+            for (int i = 0; i <= endIdx; i++)
+            {
+                Vector3 target = HexLayout.HexToPixel(path[i], hexSize, 0.5f);
+
+                Vector3 dir = target - unitTrans.position;
+                dir.y = 0;
+
+                unitTrans.rotation = Quaternion.LookRotation(dir);
+                while (Vector3.Distance(unitTrans.position, target) > 0.01f)
+                {
+                    unitTrans.position = Vector3.MoveTowards(
+                        unitTrans.position,
+                        target,
+                        4 * Time.deltaTime
+                    );
+                    yield return null;
+                }
+                unitTrans.position = target;
+            }
+        }
+        IEnumerator AttackAnimation(Unit unit, HexCoord target)
+        {
+            if (!unitObjs.TryGetValue(unit.ID, out GameObject unitObj) || unitObj == null)
+            {
+                yield break;
+            }
+
+            Transform tr = unitObj.transform;
+
+            Vector3 startPos = tr.position;
+            Vector3 targetPos = HexLayout.HexToPixel(target, hexSize, 0.5f);
+
+            Vector3 dir = targetPos - startPos;
+            dir.y = 0;
+
+            if (dir.sqrMagnitude > 0.001f)
+                tr.rotation = Quaternion.LookRotation(dir);
+
+            Vector3 attackPos = Vector3.Lerp(startPos, targetPos, 0.35f);
+
+            const float lungeTime = 0.12f;
+            const float returnTime = 0.15f;
+
+            float time = 0f;
+
+            //快速靠近
+            while (time < lungeTime)
+            {
+                time += Time.deltaTime;
+                float t = Mathf.Clamp01(time / lungeTime);
+
+                tr.position = Vector3.Lerp(startPos, attackPos, t);
+
+                yield return null;
+            }
+            tr.position = attackPos;
+
+            time = 0f;
+            //返回原位
+            while (time < returnTime)
+            {
+                time += Time.deltaTime;
+                float t = Mathf.Clamp01(time / returnTime);
+
+                tr.position = Vector3.Lerp(attackPos, startPos, t);
+
+                yield return null;
+            }
+
+            tr.position = startPos;
         }
     }
 }

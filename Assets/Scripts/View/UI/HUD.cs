@@ -26,9 +26,9 @@ namespace SparkAge.View.UI
         {
             txtMyInfo.SetText("{0}\n" + info.Name + "\n" + info.CharacterInfo.Name, info.Id);
         }
-        public void UpdateHUD(string name, int turnNum)
+        public void UpdateHUD(string name, string characterName, int turnNum)
         {
-            txtCurPlayer.SetText("当前玩家：" + name);
+            txtCurPlayer.SetText("当前玩家：\t" + name + "\t" + characterName);
             txtTurnNum.SetText("当前回合：{0}", turnNum);
         }
 

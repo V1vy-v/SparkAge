@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ff96e66a257a9a469ac4733ed5324cc, type: 3}
+  m_Name: 3 Yan
+  m_EditorClassIdentifier: 
+  Id: 3
+  Name: "\u708E"
+  Description: 333
+  CityNames:
+  - "\u767E\u7076"
+  - "\u9F99\u95E8"
+  - "\u5C1A\u8700"
+  - "\u52FE\u5434\u57CE"
+  - "\u5927\u8352\u57CE"
+  - "\u7389\u95E8"
+  WarriorAtkBonus: 1
+  WarriorDefBonus: 1
+  WarriorHpBonus: 1
+  CityHpBonus: 0
+  CityDefBonus: 0
+  CityProductionBonus: 3
+  Prefab: {fileID: 0}

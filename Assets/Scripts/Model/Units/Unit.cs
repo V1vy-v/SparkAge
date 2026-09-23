@@ -18,18 +18,19 @@ namespace SparkAge.Model.Units
     public class Unit
     {
         public int ID;//唯一ID
+
         public int Owner;//所属玩家
         public HexCoord Position;//位置
         public UnitType Type;//单位类型
+        public int Hp;//当前生命
+        public int MovementLeft;//剩余移动力
+        public bool IsDead;
 
         public string Name;//名字
         public int Atk;//攻击力
         public int Def;//防御力
-        public int Hp;//当前生命
         public int MaxHp;//最大生命
         public int MaxMovement;//最大移动力
-        public int MovementLeft;//剩余移动力
-        public bool IsDead;
 
         public Unit(int id, int own, HexCoord position, UnitInfo info)
         {

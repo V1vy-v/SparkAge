@@ -8,46 +8,130 @@ namespace SparkAge.Framework.EventCenter
 {
     public class EventDefine
     {
-        public class MoveUnitEvent
+        public class InitialSettlers
+        {
+            public List<Unit> Settlers;
+            public InitialSettlers(List<Unit> settlers)
+            {
+                Settlers = settlers;
+            }
+        }
+        public class SelectionClearEvent
+        {
+
+        }
+        public class MoveUnitStartEvent
         {
             public Unit Unit;
-            public MoveUnitEvent(Unit unit)
+            public List<HexCoord> Path;
+            public MoveUnitStartEvent(Unit unit, List<HexCoord> path)
+            {
+                Unit = unit;
+                Path = path;
+            }
+        }
+        public class MoveUnitCompletedEvent
+        {
+            public Unit Unit;
+            public MoveUnitCompletedEvent(Unit unit)
+            {
+                Unit = unit;
+            }
+        }
+        public class RemoveUnitEvent
+        {
+            public Unit Unit;
+            public RemoveUnitEvent(Unit unit)
+            {
+                Unit = unit;
+            }
+        }
+        public class UpdateUnitEvent
+        {
+            public Unit Unit;
+            public UpdateUnitEvent(Unit unit)
             {
                 Unit = unit;
             }
         }
         public class BuildUnitEvent
         {
-            public City City;
-            public BuildUnitEvent(City city)
+            public Unit Unit;
+            public BuildUnitEvent(Unit unit)
             {
-                City = city;
+                Unit = unit;
             }
         }
-        public class FoundCityEvent
+        public class RemoveCityEvent
         {
             public City City;
-            public FoundCityEvent(City city)
+            public RemoveCityEvent(City city)
             {
                 City = city;
             }
         }
-        public class AttackUnitEvent
+        public class UpdateCityEvent
+        {
+            public City City;
+            public UpdateCityEvent(City city)
+            {
+                City = city;
+            }
+        }
+        public class BuildCityEvent
+        {
+            public City City;
+            public BuildCityEvent(City city)
+            {
+                City = city;
+            }
+        }
+        public class AttackUnitStartEvent
         {
             public Unit Attacker;
             public Unit Defender;
-            public AttackUnitEvent(Unit attacker, Unit defender)
+            public List<HexCoord> Path;
+            public bool CanEnter;
+            public AttackUnitStartEvent(Unit attacker, Unit defender, List<HexCoord> path, bool canEnter)
+            {
+                Attacker = attacker;
+                Defender = defender;
+                Path = path;
+                CanEnter = canEnter;
+            }
+        }
+        public class AttackUnitCompletedEvent
+        {
+            public Unit Attacker;
+            public Unit Defender;
+            public AttackUnitCompletedEvent(Unit attacker, Unit defender)
             {
                 Attacker = attacker;
                 Defender = defender;
             }
         }
-        public class AttackCityEvent
+        public class AttackCityStartEvent
+        {
+            public Unit Attacker;
+            public City City;
+            public List<HexCoord> Path;
+            public bool CityIsCapture;
+            public List<Unit> DefenderUnits;
+            public AttackCityStartEvent(Unit attacker, City city, List<HexCoord> path, bool cityIsCapture, List<Unit> defenderUnits)
+            {
+                Attacker = attacker;
+                City = city;
+                Path = path;
+                CityIsCapture = cityIsCapture;
+                DefenderUnits = defenderUnits;
+            }
+        }
+        public class AttackCityCompletedEvent
         {
             public Unit Attacker;
             public City City;
             public bool CityIsCapture;
-            public AttackCityEvent(Unit attacker, City city, bool cityIsCapture)
+            public AttackCityCompletedEvent(Unit attacker, City city, bool cityIsCapture)
             {
                 Attacker = attacker;
                 City = city;

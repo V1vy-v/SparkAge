@@ -14,6 +14,12 @@ namespace SparkAge.Config
 
         [Header("特性")]
         public List<string> CityNames;
+        public int WarriorAtkBonus;
+        public int WarriorDefBonus;
+        public int WarriorHpBonus;
+        public int CityHpBonus;
+        public int CityDefBonus;
+        public int CityProductionBonus;
 
         [Header("引用")]
         public GameObject Prefab;

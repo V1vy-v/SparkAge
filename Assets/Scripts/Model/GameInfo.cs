@@ -14,11 +14,13 @@ namespace SparkAge.Model
                     return player;
             return null;
         }
+        public string GetPlayerCharacterName(int id) => GetPlayerInfo(id).CharacterInfo.Name;
     }
     public class PlayerInfo
     {
         public int Id;
         public string Name;
         public CharacterInfo CharacterInfo;
+        public bool IsAi;
     }
 }

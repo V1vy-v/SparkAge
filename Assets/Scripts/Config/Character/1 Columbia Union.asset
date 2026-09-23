@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ff96e66a257a9a469ac4733ed5324cc, type: 3}
+  m_Name: 1 Columbia Union
+  m_EditorClassIdentifier: 
+  Id: 1
+  Name: "\u54E5\u4F26\u6BD4\u4E9A\u8054\u90A6"
+  Description: 111
+  CityNames:
+  - "\u9EA6\u514B\u65AF"
+  - "\u7279\u91CC\u8499"
+  - "\u5821\u5792\u5C71\u57CE"
+  - "\u5723\u82CF\u83F2\u57CE"
+  - "\u94F8\u94C1\u57CE"
+  WarriorAtkBonus: 2
+  WarriorDefBonus: 1
+  WarriorHpBonus: 2
+  CityHpBonus: 0
+  CityDefBonus: 0
+  CityProductionBonus: 2
+  Prefab: {fileID: 0}

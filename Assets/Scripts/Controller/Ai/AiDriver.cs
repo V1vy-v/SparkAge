@@ -17,7 +17,7 @@ namespace SparkAge.Controller.Ai
         int maxStepsPerTurn;
         bool IsAi(int id) => session.GetControllerType(id) == ControllerType.AI;
 
-        public AiDriver(GameState state, GameSession session, AiDecider decider, float stepDelay = 2f, int maxStepsPerTurn = 100)
+        public AiDriver(GameState state, GameSession session, AiDecider decider, float stepDelay = 1f, int maxStepsPerTurn = 100)
         {
             this.state = state;
             this.session = session;
@@ -28,6 +28,9 @@ namespace SparkAge.Controller.Ai
 
         public IEnumerator Run(int firstAiPlayerId)
         {
+            if (state.IsGameOver)
+                yield break;
+
             if (!NetworkServer.active)
                 yield break;
 
@@ -37,7 +40,7 @@ namespace SparkAge.Controller.Ai
             int aiPlayerId = firstAiPlayerId;
             int steps = 0;
 
-            while (state.CurrentPlayer == aiPlayerId && IsAi(aiPlayerId))
+            while (state.CurrentPlayer == aiPlayerId && IsAi(aiPlayerId) && !state.IsGameOver)
             {
                 if (steps == 0)
                     decider.Reset(aiPlayerId);
@@ -62,6 +65,9 @@ namespace SparkAge.Controller.Ai
 
                 NetworkMgr.Instance.ExecuteAndBroadcast(order, null);
                 steps++;
+
+                if (state.IsGameOver)
+                    yield break;
 
                 if (order is EndPhaseOrder)
                 {

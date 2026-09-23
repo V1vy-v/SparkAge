@@ -19,7 +19,10 @@ namespace SparkAge.Model.StaticInfos
             //装配
             foreach (var cfg in ConfigMgr.Instance.characterCfgs)
             {
-                CharacterInfos[cfg.Id] = new CharacterInfo(cfg.Id, cfg.Name, cfg.Description, cfg.CityNames);
+                CharacterInfos[cfg.Id] = new CharacterInfo(
+                    cfg.Id, cfg.Name, cfg.Description, cfg.CityNames, 
+                    cfg.WarriorAtkBonus, cfg.WarriorDefBonus, cfg.WarriorHpBonus, 
+                    cfg.CityHpBonus, cfg.CityDefBonus, cfg.CityProductionBonus);
             }
             foreach (var cfg in ConfigMgr.Instance.unitCfgs)
             {
@@ -31,7 +34,7 @@ namespace SparkAge.Model.StaticInfos
             }
             foreach (var cfg in ConfigMgr.Instance.mapCfg)
             {
-                MapInfos[cfg.Id] = new MapInfo(cfg.Id, cfg.Seed, cfg.MapWidth, cfg.MapHeight);
+                MapInfos[cfg.Id] = new MapInfo(cfg.Id, cfg.MapWidth, cfg.MapHeight);
             }
         }
     }

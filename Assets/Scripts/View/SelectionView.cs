@@ -5,6 +5,7 @@ using SparkAge.Model;
 using SparkAge.Model.Cities;
 using SparkAge.Model.Hex;
 using SparkAge.Model.Units;
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using static SparkAge.Framework.EventCenter.EventDefine;
@@ -16,143 +17,121 @@ namespace SparkAge.View
     /// </summary>
     public class SelectionView : MonoBehaviour
     {
-        [SerializeField] Color highlightColor = new Color(1f, 1f, 0f, 0.5f);         // 高亮的黄色（半透明）
-        [SerializeField] Color unitHighlightColor = new Color(1f, 0f, 0f, 0.8f);     // 红色（略微半透明，以便叠加）
-        [SerializeField] Color reachableColor = new Color(0f, 0f, 0.6f, 0.7f);       // 深蓝色（半透明）
         [SerializeField] Transform highlightRoot;
 
         //外部提供字段
         GameState state;
         float hexSize;
-        Mesh hexMesh;//地块网格
 
         //独占字段
-        Mesh unitHighlightMesh;//单位选中框网格
-        Mesh reachableMesh;//单位可到达地块网格
-        MeshRenderer highlight;//地块高亮渲染器
-        MeshRenderer unitHighlight;//单位选中框渲染器
-        List<GameObject> moveObjs = new List<GameObject>(128);//可移动范围对象
+        GameObject highlight;//地块高亮
+        GameObject outline;//单位选中框
+        GameObject rangeBlue;//移动范围对象
+        GameObject rangeRed;//攻击范围对象
+        List<GameObject> moveObjs = new List<GameObject>(64);//可移动范围对象
         List<GameObject> attackObjs = new List<GameObject>(32);//可攻击范围对象
 
         Unit selectedUnit;//当前选中的单位
         public Unit SelectedUnit => selectedUnit;//当前选中的单位：外部访问接口
-        HashSet<HexCoord> moveHex = new();//当前单位可移动范围
-        HashSet<HexCoord> attackHex = new();//当前单位可移动范围
         City selectedCity;//当前选中的城市
         public City SelectedCity => selectedCity;//当前选中的单位：外部访问接口
+        HashSet<HexCoord> moveHex = new();//当前单位可移动范围
+        HashSet<HexCoord> attackHex = new();//当前单位可移动范围
 
 
-        public void Init(GameState state, float hexSize, Mesh hexMesh)
+        public void Init(GameState state, float hexSize)
         {
             this.state = state;
             this.hexSize = hexSize;
-            this.hexMesh = hexMesh;
 
             highlightRoot = GameObject.Find("HighlightRoot").transform;
 
-            unitHighlightMesh = HexMeshFactory.CreateHexMesh(0.8f * hexSize);
-            reachableMesh = HexMeshFactory.CreateHexMesh(0.9f * hexSize);
+            LoadAndBuildSelections();
 
-            BuildHighlight();
-            BuildMoveAndAttackObjs();
+            EventCenter.Instance.AddListener<RemoveUnitEvent>(OnRemoveUnit);
+            EventCenter.Instance.AddListener<MoveUnitCompletedEvent>(OnMoveUnitCompleted);
+            EventCenter.Instance.AddListener<AttackUnitCompletedEvent>(OnAttackUnitCompleted);
+            EventCenter.Instance.AddListener<AttackCityCompletedEvent>(OnAttackCityCompleted);
+            EventCenter.Instance.AddListener<SelectionClearEvent>(OnSelectionClear);
         }
-
-        private void Start()
+        private void OnDestroy()
         {
-            EventCenter.Instance.AddListener<MoveUnitEvent>(e =>
-            {
-                if (NetworkMgr.Instance.MyPlayerId != state.CurrentPlayer) return;
-                SelectUnit(e.Unit);
-            });
-            EventCenter.Instance.AddListener<AttackUnitEvent>(e =>
-            {
-                if (NetworkMgr.Instance.MyPlayerId != state.CurrentPlayer) return;
-                if (!e.Attacker.IsDead)
-                    SelectUnit(e.Attacker);
-                else
-                    ClearAll();
-            });
-            EventCenter.Instance.AddListener<AttackCityEvent>(e =>
-            {
-                if (NetworkMgr.Instance.MyPlayerId != state.CurrentPlayer) return;
-                if (!e.Attacker.IsDead)
-                    SelectUnit(e.Attacker);
-                else
-                    ClearAll();
-            });
+            EventCenter.Instance.RemoveListener<RemoveUnitEvent>(OnRemoveUnit);
+            EventCenter.Instance.RemoveListener<MoveUnitCompletedEvent>(OnMoveUnitCompleted);
+            EventCenter.Instance.RemoveListener<AttackUnitCompletedEvent>(OnAttackUnitCompleted);
+            EventCenter.Instance.RemoveListener<AttackCityCompletedEvent>(OnAttackCityCompleted);
+            EventCenter.Instance.RemoveListener<SelectionClearEvent>(OnSelectionClear);
         }
+
+        public void OnRemoveUnit(RemoveUnitEvent e)
+        {
+            ClearAll();
+        }
+        private void OnMoveUnitCompleted(MoveUnitCompletedEvent e)
+        {
+            if (e.Unit == null || e.Unit.Owner != NetworkMgr.Instance.MyPlayerId)
+                return;
+            SelectUnit(e.Unit);
+        }
+        private void OnAttackUnitCompleted(AttackUnitCompletedEvent e)
+        {
+            if (e.Attacker == null || e.Attacker.Owner != NetworkMgr.Instance.MyPlayerId)
+                return;
+
+            if (!e.Attacker.IsDead)
+                SelectUnit(e.Attacker);
+            else
+                ClearAll();
+        }
+        private void OnAttackCityCompleted(AttackCityCompletedEvent e)
+        {
+            if (e.Attacker == null || e.Attacker.Owner != NetworkMgr.Instance.MyPlayerId)
+                return;
+
+            if (!e.Attacker.IsDead)
+                SelectUnit(e.Attacker);
+            else
+                ClearAll();
+        }
+        private void OnSelectionClear(SelectionClearEvent e)
+        {
+            ClearAll();
+        }
+
 
         /// <summary>
-        /// 创建高亮六边形对象和单位选中框
+        /// 预创建高亮、单位选中框、移动范围和攻击范围对象
         /// </summary>
-        private void BuildHighlight()
+        private void LoadAndBuildSelections()
         {
             //地块高亮
-            GameObject obj = new GameObject("highlight");
-            MeshFilter mf = obj.AddComponent<MeshFilter>();
-            mf.mesh = hexMesh;
-            highlight = obj.AddComponent<MeshRenderer>();
-            highlight.material = new Material(Shader.Find("Sprites/Default"))
-            {
-                color = highlightColor
-            };
-            obj.transform.SetParent(highlightRoot, false);
-            obj.SetActive(false);
+            highlight = Instantiate(Resources.Load<GameObject>("Prefabs/Selection/HexHighlight"), highlightRoot);
+            highlight.SetActive(false);
 
             //单位选中框
-            obj = new GameObject("unitHighlight");
-            mf = obj.AddComponent<MeshFilter>();
-            mf.mesh = unitHighlightMesh;
-            unitHighlight = obj.AddComponent<MeshRenderer>();
-            unitHighlight.material = new Material(Shader.Find("Sprites/Default"))
-            {
-                color = unitHighlightColor
-            };
-            obj.transform.SetParent(highlightRoot, false);
-            obj.SetActive(false);
-        }
-        /// <summary>
-        /// 预创建移动范围和攻击范围对象
-        /// </summary>
-        /// <param name="point"></param>
-        private void BuildMoveAndAttackObjs()
-        {
-            GameObject moveObj, attackObj;
-            MeshFilter mf; 
-            MeshRenderer mr;
-            Material material1 = new Material(Shader.Find("Sprites/Default"))
-            {
-                color = reachableColor
-            };
-            Material material2 = new Material(Shader.Find("Sprites/Default"))
-            {
-                color = Color.red
-            };
-            for (int i = 0; i < 128; i++)
-            {
-                moveObj = new GameObject("moveTile");
-                mf = moveObj.AddComponent<MeshFilter>();
-                mf.mesh = reachableMesh;
-                mr = moveObj.AddComponent<MeshRenderer>();
-                mr.material = material1;
-                moveObj.transform.SetParent(highlightRoot, false);
-                moveObj.SetActive(false);
+            outline = Instantiate(Resources.Load<GameObject>("Prefabs/Selection/HexOutline"), highlightRoot);
+            outline.SetActive(false);
 
-                moveObjs.Add(moveObj);
+            GameObject obj;
+            //移动范围对象
+            rangeBlue = Resources.Load<GameObject>("Prefabs/Selection/HexRangeBlue");
+            for (int i = 0; i < 64; i++)
+            {
+                obj = Instantiate(rangeBlue, highlightRoot);
+                obj.SetActive(false);
+                moveObjs.Add(obj);
             }
-            for (int i = 0; i < 128; i++)
-            {
-                attackObj = new GameObject("moveTile");
-                mf = attackObj.AddComponent<MeshFilter>();
-                mf.mesh = reachableMesh;
-                mr = attackObj.AddComponent<MeshRenderer>();
-                mr.material = material2;
-                attackObj.transform.SetParent(highlightRoot, false);
-                attackObj.SetActive(false);
 
-                attackObjs.Add(attackObj);
+            //攻击范围对象
+            rangeRed = Resources.Load<GameObject>("Prefabs/Selection/HexRangeRed");
+            for (int i = 0; i < 32; i++)
+            {
+                obj = Instantiate(rangeRed, highlightRoot);
+                obj.SetActive(false);
+                attackObjs.Add(obj);
             }
         }
+
 
         /// <summary>
         /// 接收点击地块，关联点击高亮、单位选中、移动范围显示
@@ -189,15 +168,8 @@ namespace SparkAge.View
         /// </summary>
         private void ShowHighlight(HexCoord? clickHex)
         {
-            highlight.transform.position = HexLayout.HexToPixel((HexCoord)clickHex, hexSize, 0.02f);
+            highlight.transform.position = HexLayout.HexToPixel((HexCoord)clickHex, hexSize, 0.29f);
             highlight.gameObject.SetActive(true);
-        }
-        /// <summary>
-        /// 隐藏地块高亮
-        /// </summary>
-        public void ClearHighlight()
-        {
-            highlight.gameObject.SetActive(false);
         }
         /// <summary>
         /// 实现点击选中单位和显示可移动范围
@@ -205,8 +177,8 @@ namespace SparkAge.View
         public void SelectUnit(Unit unit)
         {
             //高亮选中框
-            unitHighlight.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.06f);
-            unitHighlight.gameObject.SetActive(true);
+            outline.transform.position = HexLayout.HexToPixel(unit.Position, hexSize, 0.3f);
+            outline.gameObject.SetActive(true);
             ShowHighlight(unit.Position);
 
             ClearaRange();
@@ -226,7 +198,7 @@ namespace SparkAge.View
         public void ClearSelection()
         {
             //隐藏选中框
-            unitHighlight.gameObject.SetActive(false);
+            outline.gameObject.SetActive(false);
             //清除移动范围
             ClearaRange();
             //清除选中对象
@@ -243,16 +215,24 @@ namespace SparkAge.View
             foreach (var hex in moveHex)
             {
                 moveObjs[i].SetActive(true);
-                moveObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.04f);
+                moveObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.26f);
                 i++;
             }
             i = 0;
             foreach (var hex in attackHex)
             {
                 attackObjs[i].SetActive(true);
-                attackObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.04f);
+                attackObjs[i].transform.position = HexLayout.HexToPixel(hex, hexSize, 0.26f);
                 i++;
             }
+        }
+
+        /// <summary>
+        /// 隐藏地块高亮
+        /// </summary>
+        public void ClearHighlight()
+        {
+            highlight.gameObject.SetActive(false);
         }
         /// <summary>
         /// 隐藏所有范围对象

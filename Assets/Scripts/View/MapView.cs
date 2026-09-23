@@ -1,6 +1,9 @@
+using SparkAge.Config;
+using SparkAge.Controller.Network;
 using SparkAge.Framework.Hex;
 using SparkAge.Model;
 using SparkAge.Model.Hex;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace SparkAge.View
@@ -10,10 +13,6 @@ namespace SparkAge.View
     /// </summary>
     public class MapView : MonoBehaviour
     {
-        [SerializeField] Material plainMaterial;
-        [SerializeField] Material forestMaterial;
-        [SerializeField] Material mountainMaterial;
-        [SerializeField] Material waterMaterial;
         [SerializeField] Transform mapRoot;
 
         //外部提供字段
@@ -21,77 +20,65 @@ namespace SparkAge.View
         float hexSize;
 
         //独占字段
-        Mesh hexMesh;//地块网格
-        public Mesh HexMesh => hexMesh;
+        int seed => NetworkMgr.Instance.MapSeed;
+        List<GameObject> grassTiles;
+        List<GameObject> mountainTiles;
+        List<GameObject> forestTiles;
+        List<GameObject> waterTiles;
 
         public void Init(GameState state, float hexSize)
         {
             this.state = state;
             this.hexSize = hexSize;
 
-            hexMesh = HexMeshFactory.CreateHexMesh(hexSize);
-            EnsureMaterials();
+            LoadAllTiles();
             mapRoot = GameObject.Find("MapRoot").transform;
 
             //创建地图和高亮资源，范围对象
             BuildTiles();
         }
 
-        /// <summary>
-        /// 确认材质已创建
-        /// </summary>
-        private void EnsureMaterials()
+        private void LoadAllTiles()
         {
-            if (plainMaterial == null)
-                plainMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                {
-                    color = new UnityEngine.Color(0.45f, 0.75f, 0.45f)
-                };
-            if (forestMaterial == null)
-                forestMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                {
-                    color = new UnityEngine.Color(0f, 0.45f, 0f)
-                };
-            if (mountainMaterial == null)
-                mountainMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                {
-                    color = new UnityEngine.Color(0.55f, 0.27f, 0.07f)
-                };
-            if (waterMaterial == null)
-                waterMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"))
-                {
-                    color = new UnityEngine.Color(0f, 0.75f, 1f)
-                };
+            grassTiles = new(Resources.LoadAll<GameObject>("Prefabs/Tiles/Grass"));
+            mountainTiles = new(Resources.LoadAll<GameObject>("Prefabs/Tiles/Mountain"));
+            forestTiles = new(Resources.LoadAll<GameObject>("Prefabs/Tiles/Forest"));
+            waterTiles = new(Resources.LoadAll<GameObject>("Prefabs/Tiles/Water"));
         }
-        /// <summary>
-        /// 根据地形获取材质
-        /// </summary>
-        /// <param name="type"></param>
-        /// <returns></returns>
-        public Material GetMaterial(TerrainType type) => type switch
-        {
-            TerrainType.Plain => plainMaterial,
-            TerrainType.Forest => forestMaterial,
-            TerrainType.Mountain => mountainMaterial,
-            TerrainType.Water => waterMaterial,
-            _ => plainMaterial
-        };
-        /// <summary>
-        /// 创建地图中的地块
-        /// </summary>
         public void BuildTiles()
         {
             foreach(var tile in state.Map.Tiles.Values)
             {
-                GameObject obj = new GameObject($"tile {tile.Coord.R}, {tile.Coord.Q}");
-                MeshFilter mf = obj.AddComponent<MeshFilter>();
-                mf.mesh = hexMesh;
-                MeshRenderer mr = obj.AddComponent<MeshRenderer>();
-                mr.material = GetMaterial(tile.Type);
+                GameObject obj = Instantiate(GetPrefab(tile.Coord, tile.Type));
 
                 obj.transform.SetParent(mapRoot, false);
                 obj.transform.position = HexLayout.HexToPixel(tile.Coord, hexSize, 0);
             }
+        }
+        public GameObject GetPrefab(HexCoord coord, TerrainType type)
+        {
+            List<GameObject> tiles;
+            switch (type)
+            {
+                case TerrainType.Plain:
+                    tiles = grassTiles;
+                    break;
+                case TerrainType.Mountain:
+                    tiles = mountainTiles;
+                    break;
+                case TerrainType.Forest:
+                    tiles = forestTiles;
+                    break;
+                case TerrainType.Water:
+                    tiles = waterTiles;
+                    break;
+                default:
+                    tiles = grassTiles;
+                    break;
+            }
+            int hash = coord.Q * 73856093 ^ coord.R * 19349663 ^ seed * 83492791;
+            int index = Mathf.Abs(hash) % tiles.Count;
+            return tiles[index];
         }
     }
 

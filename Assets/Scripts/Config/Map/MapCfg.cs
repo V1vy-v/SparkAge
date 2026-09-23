@@ -12,7 +12,6 @@ namespace SparkAge.Config
         public string Name;
 
         [Header("地图信息")]
-        public int Seed;
         public int MapWidth;
         public int MapHeight;
     }

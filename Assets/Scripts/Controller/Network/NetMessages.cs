@@ -16,7 +16,7 @@ namespace SparkAge.Controller.Network
     //服务端->所有
     public struct RoomStateMsg : NetworkMessage { public SlotData[] slots; }
     public struct GameMapMsg : NetworkMessage { public int mapId; }
-    public struct StartGameMsg : NetworkMessage { public bool AllReady; public SlotData[] Slots; public int MapId; }
+    public struct StartGameMsg : NetworkMessage { public bool AllReady; public SlotData[] Slots; public int MapId; public int MapSeed; }
     public struct SlotData
     {
         public int PlayerId;
@@ -79,6 +79,8 @@ namespace SparkAge.Controller.Network
     //服务端->所有
     public struct GameUpdateMsg : NetworkMessage
     {
+        public bool IsGameOver;
+        public int WinnerId;
         public GameStateDeltaMsg Delta;
         public HintMsg Hint;
     }
@@ -145,6 +147,7 @@ namespace SparkAge.Controller.Network
         public bool AttackerIsDead;
         public bool DefenderIsDead;
         public bool CityIsCaptured;
+        public List<int> DeadUnitIds;
     }
     public struct CityHintData
     {

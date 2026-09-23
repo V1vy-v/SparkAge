@@ -1,3 +1,4 @@
+using SparkAge.Config;
 using SparkAge.Model.Units;
 using SparkAge.View.UI;
 using TMPro;
@@ -5,7 +6,8 @@ using UnityEngine;
 
 public class SelUnitPanel : BasePanel
 {
-    [SerializeField] TextMeshProUGUI txtInfo;
+    [SerializeField] TextMeshProUGUI txtInfo1;
+    [SerializeField] TextMeshProUGUI txtInfo2;
     Unit unit;
 
     protected override void Init()
@@ -13,10 +15,10 @@ public class SelUnitPanel : BasePanel
         
     }
 
-    public void UpdatePanel(Unit unit)
+    public void UpdatePanel(Unit unit, string characterName)
     {
         this.unit = unit;
-        txtInfo.SetText("名字：" + unit.Name + "\n血量：{0}\n攻击力：{1}\n防御力：{2}\n移动力：{3}\n",
-            unit.Hp, unit.Atk, unit.Def, unit.MovementLeft);
+        txtInfo1.SetText("名字：" + unit.Name + "\n攻击力：{0}\n血量：{1}", unit.Atk, unit.Hp);
+        txtInfo2.SetText("归属：" + characterName + "\n防御力：{0}\n移动力：{1}\n", unit.Def, unit.MovementLeft);
     }
 }

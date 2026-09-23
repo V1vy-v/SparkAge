@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ff96e66a257a9a469ac4733ed5324cc, type: 3}
+  m_Name: 8 Laterano
+  m_EditorClassIdentifier: 
+  Id: 8
+  Name: "\u62C9\u7279\u5170"
+  Description: 
+  CityNames:
+  - "\u62C9\u7279\u5170\u57CE"
+  - "\u53F8\u63D0\u671B\u533A"
+  - "\u5B89\u5E03\u7F57\u4FEE\u533A"
+  - "\u6CD5\u67CF\u5C13\u533A"
+  WarriorAtkBonus: 3
+  WarriorDefBonus: -1
+  WarriorHpBonus: -3
+  CityHpBonus: 0
+  CityDefBonus: 0
+  CityProductionBonus: 1
+  Prefab: {fileID: 0}

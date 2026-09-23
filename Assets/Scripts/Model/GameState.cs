@@ -8,6 +8,7 @@ using SparkAge.Model.StaticInfos;
 using SparkAge.Model.Units;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace SparkAge.Model
@@ -38,6 +39,8 @@ namespace SparkAge.Model
         int currentPlayer;//当前可操作的玩家
         public int CurrentPlayer => currentPlayer;
 
+        public bool IsGameOver = false;
+        public int WinnerId;
 
         public GameState(GameInfo gameInfo, StaticInfo staticInfo)
         {
@@ -50,7 +53,7 @@ namespace SparkAge.Model
         public void Init()
         {
             //地图、玩家数据、单位数据、城市数据
-            map = MapGenerator.Generate(gameInfo.MapInfo.MapWidth, gameInfo.MapInfo.MapHeight, gameInfo.MapInfo.Seed);
+            map = MapGenerator.Generate(gameInfo.MapInfo.MapWidth, gameInfo.MapInfo.MapHeight, NetworkMgr.Instance.MapSeed);
             Players = new List<PlayerState>();
             units = new List<Unit>(200);
             cities = new List<City>(100);
@@ -63,8 +66,8 @@ namespace SparkAge.Model
             List<HexCoord> points = Map.FindSpawnPointsFirst(4);
             for (int i = 0; i < gameInfo.PlayerInfos.Count; i++)
             {
-                var payerInfo = gameInfo.PlayerInfos[i];
-                Players.Add(new PlayerState(payerInfo.Id, payerInfo.Name, payerInfo.CharacterInfo));
+                var playerInfo = gameInfo.PlayerInfos[i];
+                Players.Add(new PlayerState(playerInfo.Id, playerInfo.Name, playerInfo.CharacterInfo, playerInfo.IsAi));
             }
         }
         public void CreateInitialUnits()
@@ -74,6 +77,7 @@ namespace SparkAge.Model
             {
                 HexCoord? spawnPoint = FindSpawnPoint(points[i]);
                 Unit newUnit = new Unit(nxtUnitID++, gameInfo.PlayerInfos[i].Id, (HexCoord)spawnPoint, GetUnitInfo(UnitType.Settler));
+                ApplyUnitCharacterBonus(newUnit);
                 units.Add(newUnit);
             }
         }
@@ -84,7 +88,7 @@ namespace SparkAge.Model
         /// </summary>
         /// <param name="id"></param>
         /// <returns></returns>
-        private PlayerState TryGetPlayer(int id)
+        public PlayerState TryGetPlayer(int id)
         {
             foreach (var player in Players)
                 if (player.ID == id)
@@ -114,6 +118,22 @@ namespace SparkAge.Model
                 if (city.ID == id)
                     return city;
             return null;
+        }
+
+        /// <summary>
+        /// 查询存活玩家数量
+        /// </summary>
+        public int AlivePlayerCount =>
+            Players.Count(p => p.IsAlive);
+        /// <summary>
+        /// 查询某个玩家是否存活
+        /// </summary>
+        /// <param name="playerId"></param>
+        /// <returns></returns>
+        public bool IsPlayerAlive(int playerId)
+        {
+            PlayerState player = TryGetPlayer(playerId);
+            return player != null && player.IsAlive;
         }
 
         /// <summary>
@@ -208,6 +228,15 @@ namespace SparkAge.Model
             HexCoord bound2 = new HexCoord(0, 0);
             return (center, bound1, bound2);
         }
+        /// <summary>
+        /// 根据id查询角色属性
+        /// </summary>
+        /// <param name="owner"></param>
+        /// <returns></returns>
+        private CharacterInfo GetCharacterInfo(int owner)
+        {
+            return gameInfo.GetPlayerInfo(owner).CharacterInfo;
+        }
 
         /// <summary>
         /// 用于Ai寻找攻击目标
@@ -219,14 +248,14 @@ namespace SparkAge.Model
             List<HexCoord> res = new List<HexCoord>();
             foreach (Unit unit in units)
             {
-                if (unit.Position.DistanceTo(attacker.Position) < 8.0f  && unit.Owner != attacker.Owner)
+                if (unit.Position.DistanceTo(attacker.Position) < 4.0f  && unit.Owner != attacker.Owner)
                 {
                     res.Add(unit.Position);
                 }
             }
             foreach (City city in cities)
             {
-                if (city.Position.DistanceTo(attacker.Position) < 8.0f && city.Owner != attacker.Owner)
+                if (city.Position.DistanceTo(attacker.Position) < 4.0f && city.Owner != attacker.Owner)
                 {
                     res.Add(city.Position);
                 }
@@ -391,26 +420,70 @@ namespace SparkAge.Model
         public void CreatUnit(UnitData unitData)
         {
             Unit newUnit = new Unit(unitData.Id, unitData.Owner, unitData.Position, GetUnitInfo(unitData.Type));
+            ApplyUnitCharacterBonus(newUnit);
+            newUnit.UpdateProperty(unitData);
             units.Add(newUnit);
         }
         public void CreatCity(CityData cityData)
         {
             City newCity = new City(cityData.Id, cityData.Owner, cityData.Name, cityData.Position, GetCityInfo(0));
+            RefreshCityCharacterStats(newCity);
+            newCity.UpdateProperty(cityData);
             cities.Add(newCity);
         }
         #endregion
 
         #region 三、主机端执行方法，客户端不允许调用
         Random r = new Random();
+        private void ApplyUnitCharacterBonus(Unit unit)
+        {
+            CharacterInfo c = GetCharacterInfo(unit.Owner);
+
+            if (unit.Type == UnitType.Warrior)
+            {
+                unit.Atk += c.WarriorAtkBonus;
+                unit.Def += c.WarriorDefBonus;
+                unit.MaxHp += c.WarriorHpBonus;
+                unit.Hp = unit.MaxHp;
+            }
+        }
+        private void RefreshCityCharacterStats(City city)
+        {
+            CharacterInfo c = GetCharacterInfo(city.Owner);
+            CityInfo baseInfo = GetCityInfo(0);
+
+            city.Hp = city.MaxHp = baseInfo.Hp + c.CityHpBonus;
+            city.Def = baseInfo.Def + c.CityDefBonus;
+            city.ProductionPerTurn = GameRules.CityProductionPerTurn + c.CityProductionBonus;
+        }
 
         /// <summary>
         /// 数据层：玩家结束回合
         /// </summary>
         public void EndPhase()
         {
-            currentPlayer++;
-            if (currentPlayer > Players.Count)
-                EndTurn();
+            if (IsGameOver)
+                return;
+
+            int guard = 0;
+
+            while (guard++ <= Players.Count * 2)
+            {
+                currentPlayer++;
+
+                if (currentPlayer > Players.Count)
+                {
+                    EndTurn();
+
+                    if (IsPlayerAlive(currentPlayer))
+                        return;
+
+                    continue;
+                }
+
+                if (IsPlayerAlive(currentPlayer))
+                    return;
+            }
         }
         /// <summary>
         /// 数据层：回合结束
@@ -418,8 +491,8 @@ namespace SparkAge.Model
         public void EndTurn()
         {
             //结算每个城市生产力变化
-            foreach (var city in cities)
-                city.Production += GameRules.CityProductionPerTurn;
+            foreach (var city in cities) 
+                city.Production += city.ProductionPerTurn;
             //所有单位恢复移动力
             foreach (var unit in units)
                 unit.MovementLeft = unit.MaxMovement;
@@ -428,6 +501,35 @@ namespace SparkAge.Model
             turnNumber++;
             //重置当前玩家
             currentPlayer = 1;
+        }
+        /// <summary>
+        /// 更新游戏是否结束
+        /// </summary>
+        private void UpdateGameOverState()
+        {
+            int alivePlayerCount = 0;
+            int aliveHumanCount = 0;
+
+            List<PlayerState> alivePlayers = new List<PlayerState>();
+
+            foreach (PlayerState p in Players)
+            {
+                if (!p.IsAlive)
+                    continue;
+
+                alivePlayerCount++;
+                alivePlayers.Add(p);
+
+                if (!p.IsAi)
+                    aliveHumanCount++;
+            }
+
+            IsGameOver = alivePlayerCount <= 1 || aliveHumanCount == 0;
+
+            if (alivePlayerCount == 1)
+                WinnerId = alivePlayers[0].ID;
+            else
+                WinnerId = 0;
         }
 
         public enum BuildUnitFailReason { Success, WrongCityID, NoAccess, NotEnoughProduction, NoUnitSpawnNear }
@@ -463,6 +565,7 @@ namespace SparkAge.Model
                 return new BuildUnitResult(false, BuildUnitFailReason.NoUnitSpawnNear, null);
 
             Unit unit = new Unit(nxtUnitID++, city.Owner, (HexCoord)spawnHex, GetUnitInfo(type));
+            ApplyUnitCharacterBonus(unit);
             units.Add(unit);
             city.Production -= production;
 
@@ -550,6 +653,7 @@ namespace SparkAge.Model
             List<string> cityNames = gameInfo.GetPlayerInfo(settler.Owner).CharacterInfo.CityNames;
             string cityName = cityNames[r.Next(cityNames.Count)];
             City city = new City(nxtCityID++, settler.Owner, cityName, settler.Position, GetCityInfo(0));
+            RefreshCityCharacterStats(city);
             cities.Add(city);
 
             return new FoundCityResult(true, FoundCityFailReason.Success, city);
@@ -598,7 +702,7 @@ namespace SparkAge.Model
 
             defender.Hp -= Math.Max(1, attacker.Atk - defender.Def);
             if (defender.Type != UnitType.Settler)
-                attacker.Hp -= Math.Max(1, defender.Atk - attacker.Def);
+                attacker.Hp -= defender.Def;
             bool attackerIsDead = attacker.Hp <= 0;
             bool defenderIsDead = defender.Hp <= 0;
             bool canEnter = false;
@@ -606,9 +710,15 @@ namespace SparkAge.Model
             {
                 defender.IsDead = true;
                 units.Remove(defender);
-                attacker.Position = target;
                 if (GetCityAt(target) == null)
+                {
+                    attacker.Position = target;
                     canEnter = true;
+                }
+                else if (pathRes.Path.Count >= 2)
+                {
+                    attacker.Position = pathRes.Path[pathRes.Path.Count - 2];
+                }
             }
             else if (pathRes.Path.Count >= 2)
             {
@@ -632,34 +742,37 @@ namespace SparkAge.Model
             public readonly AttackCityFailReason Reason;
             public readonly bool CityIsCaptured;
             public readonly List<HexCoord> Path;
+            public readonly List<Unit> DefenderUnits;
             public readonly bool DefenderIsDead;
-            public AttackCityResult(bool success, AttackCityFailReason reason, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead)
+            public AttackCityResult(bool success, AttackCityFailReason reason, bool cityIsCaptured, List<HexCoord> path, bool defenderIsDead, List<Unit> defenderUnits)
             {
                 Success = success;
                 Reason = reason;
                 CityIsCaptured = cityIsCaptured;
                 Path = path;
                 DefenderIsDead = defenderIsDead;
+                DefenderUnits = defenderUnits;
             }
         }
         public AttackCityResult AttackCity(Unit attacker, City city)
         {
             if (attacker.Owner != currentPlayer)
-                return new AttackCityResult(false, AttackCityFailReason.NoAccess, false, null, false);
+                return new AttackCityResult(false, AttackCityFailReason.NoAccess, false, null, false, null);
 
             if (city.Owner == attacker.Owner)
-                return new AttackCityResult(false, AttackCityFailReason.IsSameOwner, false, null, false);
+                return new AttackCityResult(false, AttackCityFailReason.IsSameOwner, false, null, false, null);
 
             if (attacker.Type == UnitType.Settler)
-                return new AttackCityResult(false, AttackCityFailReason.IsSettler, false, null, false);
+                return new AttackCityResult(false, AttackCityFailReason.IsSettler, false, null, false, null);
 
             PathResult pathRes = Pathfinding.FindPath(attacker.Position, city.Position,
                 hex => (hex.DistanceTo(city.Position) > 1 && CanPass(hex, attacker) ||
                         hex.DistanceTo(city.Position) == 1 && CanStand(hex, attacker) ||
                         hex.Equals(city.Position)) ? Map.Tiles[hex].MoveCost : -1);
             if (!pathRes.Found || pathRes.Cost > attacker.MovementLeft)
-                return new AttackCityResult(false, AttackCityFailReason.Unreachable, false, null, false);
+                return new AttackCityResult(false, AttackCityFailReason.Unreachable, false, null, false, null);
 
+            List<Unit> defenderUnits = new List<Unit>();
             city.Hp -= Math.Max(1, attacker.Atk - city.Def);
             bool cityIsDead = city.Hp <= 0;
             bool defenderIsDead = false;
@@ -678,6 +791,19 @@ namespace SparkAge.Model
                 {
                     defenderIsDead = true;
                     defender.IsAlive = false;
+
+                    foreach (var unit in AllUnits)
+                    {
+                        if (unit.Owner == defender.ID)
+                        {
+                            unit.IsDead = true;
+                            defenderUnits.Add(unit);
+                        }
+                    }
+
+                    units.RemoveAll(unit => unit.Owner == defender.ID);
+
+                    UpdateGameOverState();
                 }
             }
             else if (pathRes.Path.Count >= 2)
@@ -686,7 +812,7 @@ namespace SparkAge.Model
             }
             attacker.MovementLeft = 0;
 
-            return new AttackCityResult(true, AttackCityFailReason.Success, cityIsDead, pathRes.Path, defenderIsDead);
+            return new AttackCityResult(true, AttackCityFailReason.Success, cityIsDead, pathRes.Path, defenderIsDead, defenderUnits);
         }
         #endregion
     }

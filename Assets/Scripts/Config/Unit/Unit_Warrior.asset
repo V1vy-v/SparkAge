@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   Type: 1002
   Name: Warrior
-  Atk: 4
+  Atk: 5
   Def: 1
   Hp: 10
   Movement: 4

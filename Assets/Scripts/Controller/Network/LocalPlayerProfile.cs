@@ -1,22 +1,37 @@
-using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
 namespace SparkAge.Controller.Network
 {
     public static class LocalPlayerProfile
     {
+        private const string NickNameKey = "SparkAge.NickName";
+
         public static string NickName { get; private set; } = "";
-        public static bool IsFirst => NickName == "";
+
+        public static bool IsFirst => string.IsNullOrEmpty(NickName);
+
+        static LocalPlayerProfile()
+        {
+            Load();
+        }
+
+        public static void Load()
+        {
+            NickName = PlayerPrefs.GetString(NickNameKey, "");
+        }
 
         public static void Save(string name)
         {
-            if(name == "")
+            string finalName = name == null ? "" : name.Trim();
+
+            if (string.IsNullOrEmpty(finalName))
             {
-                NickName = "玩家" + Random.Range(1000, 9999).ToString();
+                finalName = "玩家" + Random.Range(1000, 9999);
             }
-            else
-                NickName = name;
+
+            NickName = finalName;
+            PlayerPrefs.SetString(NickNameKey, NickName);
+            PlayerPrefs.Save();
         }
     }
 }

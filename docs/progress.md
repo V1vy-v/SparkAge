@@ -9,8 +9,13 @@
 3. 执行对话每完成一个任务，更新 docs/progress.md（做了什么、结果、阻塞点）。
 4. 两个对话看到对方更新的文件时，以文件内容为最新事实。
 
-## 当前状态：联机基础 + AI 重写完成 → 下一步 NET-7 状态同步/表现层收尾
+## 当前状态：NET-7A 客户端应用管线完成 → 下一步 NET-7B 动画队列/表现同步
 
+## 2026-09-21 NET-7A（完成）
+- `ApplyGameUpdate` 顺序改为 `ApplyGameStateDelta → RecoverPhase → ApplyHint`。
+- `InitClientWorldState` 删除强制 `OtherPhase`。
+- 本地动画仍由 `ApplyHint` 设置 `Animating`，动画完成事件负责 `RecoverPhase`。
+- 下一步：NET-7B 动画队列与表现同步。
 ## 里程碑
 ### W1（完成）
 - Hex 坐标数学（轴向 + 像素互转 + 邻居 + 距离）+ 3 个单测

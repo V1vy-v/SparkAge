@@ -517,31 +517,66 @@ nm.ConnectFailed += msg => Debug.LogError($"连接失败：{msg}");
 
 ---
 
-## NET-7A 任务卡：客户端表现层收尾（3 个小项）
+## NET-7A 任务卡：客户端应用管线顺序（小卡）
 
-**目标**：让客户端在收到快照后，选中状态、输入门控、边界情况都正确。
+**目标**：客户端先应用新状态，再播放表现，最后根据自己的回合恢复输入状态。
 
-**意义**：数据同步已经通了，但"选中框指错位置""连点发出多条命令""字典 KeyNotFound"这类问题会让联机体验看起来像 bug；这三项补完后，客户端表现才"干净可用"。
+**当前问题**
 
-**改动点与逻辑**
-1. **选中状态刷新**（`GameController.ApplySnapShot` 末尾）
-   - 若 `selectionView.SelectedUnit` 已不在 Model（被销毁）→ `ClearSelection()`；
-   - 若仍存在但位置/移动力变化 → 重新 `SelectUnit` 刷新选中框与范围高亮；
-   - 城市同理（选中城市被易主/不存在时清理）。
-2. **发命令后锁输入**
-   - 客户端 `SubmitOrder` 的"发送分支"里，把 phase 切到等待态（复用 `OtherPhase` 或新增 `WaitingServer`）；
-   - 收到快照后按 `state.CurrentPlayer == MyPlayerId` 决定 `PlayerTurn` / `OtherPhase`（这段已在 `ApplySnapShot` 里，只需保证发送后不会继续保持 PlayerTurn）。
-3. **`UnitView.UpdateUnit` 兜底**
-   - `unitObjs[unit]` 改为 `TryGetValue`：没有视觉对象就先 `BuildUnit`，避免 delta 边界情况抛异常。
+`GameController.ApplyGameUpdate` 现在是：
 
-**验收**
-- [ ] 客户端：选中单位 → 对方让它移动/死亡 → 本端选中框与范围正确（不残留、不指错）
-- [ ] 客户端：连续点击目标格只发出一次命令（等待期内不再发）
-- [ ] 收到只含 Updated 不含 Added 的单位时不会抛异常
-- [ ] 提交：`fix: client selection refresh, input lock after order, safe unit view update`
+```text
+RecoverPhase()
+→ ApplyGameStateDelta()
+→ ApplyHint()
+```
 
-**不做**：动画（NET-7B）。
+`RecoverPhase()` 在 `Delta` 之前执行，使用的是旧的 `state.CurrentPlayer`。回合切换后，客户端可能仍然按上一个玩家解锁输入；本地玩家执行移动/攻击时，又会立刻被 `RecoverPhase()` 覆盖成 `PlayerTurn`。
 
+### 修改点
+
+1. `ApplyGameUpdate` 改为：
+
+```text
+ApplyGameStateDelta(msg.Delta)
+→ RecoverPhase()
+→ ApplyHint(msg.Hint)
+```
+
+2. `ApplyHint` 保持 `void`：
+
+- 移动/攻击/攻城是本地玩家时，`ApplyHint` 在启动 View 动画前设置 `phase = Animating`；
+- 动画完成事件负责最后调用 `RecoverPhase()` 解锁输入；
+- 非本地玩家/AI 行动不会把本机 phase 设成 `Animating`。
+
+3. 动画完成事件继续由 `MoveUnitEvent`、`AttackUnitEvent`、`AttackCityEvent` 驱动：
+
+- 只有 `IsMyTurn` 时才 `RecoverPhase()`；
+- 非本地玩家/AI 行动只更新 View，不改变本地输入权限。
+
+4. `InitClientWorldState` 不要再强制：
+
+```csharp
+phase = GamePhase.OtherPhase;
+```
+
+初始化应用完快照后，统一根据当前玩家恢复 phase。
+
+### 验收
+
+- [ ] 客户端结束回合后，phase 根据**新** `CurrentPlayer` 正确切换。
+- [ ] 本地玩家移动/攻击期间保持 `Animating`，动画结束后才解锁。
+- [ ] 对方或 AI 行动时，客户端播放表现但自己的输入状态仍正确。
+- [ ] 回合切换后 HUD 显示当前玩家和回合数正确。
+- [ ] 连续快速点击不会在等待服务端期间再次提交命令。
+- [ ] 提交：`fix: apply client game update before phase recovery`
+
+### 不做
+
+- 不改 `GameStateDeltaMsg` 为全量快照；
+- 不重做事件中心；
+- 不做动画队列；
+- 不处理城市/单位面板的完整刷新重构。
 ---
 
 ## NET-7B 任务卡：动画同步最小版（Hint 队列，只做移动 + 攻击）
@@ -705,3 +740,210 @@ GameController（回合推进）
 - NET-7 状态结构重构；
 - 掉线接管与重连（NET-9）；
 - 人类命令来源校验与完整反作弊。
+
+---
+
+## NET-10 任务卡：玩家淘汰、观战与游戏结束
+
+**目标**：玩家失去最后一座城市后进入观战；只剩一名玩家时对局结束并显示结算面板。
+
+### 已有基础
+
+- `GameState` 已有 `IsGameOver / WinnerId` 字段；
+- `AttackCityResult` 已能返回被淘汰玩家的 `DefenderUnits`；
+- `GameOverPanel` 已存在。
+
+### 1. Model 层：淘汰与胜负
+
+在 `GameState` 增加：
+
+```text
+int AlivePlayerCount
+bool IsPlayerAlive(int playerId)
+void UpdateGameOverState()
+```
+
+当城市被占领且守方最后一座城市消失时：
+
+```text
+defender.IsAlive = false
+→ 找到 defender 的所有单位
+→ 标记 IsDead = true
+→ 从 units 中移除
+→ 放入 AttackCityResult.DefenderUnits
+→ UpdateGameOverState()
+```
+
+`UpdateGameOverState()`：
+
+```text
+AlivePlayerCount <= 1
+→ IsGameOver = true
+→ WinnerId = 唯一存活玩家 Id；没有则为 0
+```
+
+### 2. 回合自动跳过
+
+`GameState.EndPhase()` 不能只做 `currentPlayer++`，要推进到下一个存活玩家：
+
+```text
+递增 currentPlayer
+→ 如果超过最后玩家，执行 EndTurn()
+→ 继续跳过 IsAlive == false 的玩家
+→ 直到找到存活玩家或 IsGameOver
+```
+
+死亡玩家不能再获得 `PlayerTurn`，AI 也不会为其启动。
+
+### 3. 死亡玩家的单位销毁
+
+服务端 `AttackCity` 已经返回 `DefenderUnits`，但还要完成：
+
+- `UnitData` 中把这些单位标记为 `IsDead = true` 并同步给客户端；
+- `UnitHintData` 增加 `List<int> DeadUnitIds`；
+- `UnitView.AttackCity` 增加 `List<Unit> defeatedUnits` 参数；
+- 攻城动画播完后销毁这些单位的 View。
+
+不要收到消息瞬间销毁，否则守方单位会在动画播放前消失。
+
+### 4. GameOver 数据下发
+
+`GameUpdateMsg` 增加：
+
+```csharp
+bool IsGameOver;
+int WinnerId;
+```
+
+服务端每次执行命令后统一填充。客户端不能自行判断胜负。
+
+`AttackCity` 的 Delta 还要带上：
+
+- 被淘汰玩家的 `PlayerData`；
+- 攻方单位；
+- 目标城市；
+- 被销毁的守方单位。
+
+### 5. 观战与结算
+
+增加：
+
+```csharp
+enum GamePhase
+{
+    ...
+    Spectator
+}
+```
+
+客户端收到更新后：
+
+```text
+本地玩家 IsAlive == false
+→ 不立即切 UI
+→ 等待 AttackCityEvent
+→ 进入 Spectator
+→ 显示观战 UI
+→ 禁止所有操作输入
+
+msg.IsGameOver == true
+→ 等待 AttackCityEvent
+→ 进入 GameOver
+→ 显示 GameOverPanel
+→ WinnerId == MyPlayerId 显示胜利，否则显示失败
+```
+
+如果玩家死亡和游戏结束同一条消息发生，以 `GameOver` 为准。
+
+### 6. 服务端输入保护
+
+`GameController.ExecuteOrder` 开头拒绝：
+
+- `state.IsGameOver == true`；
+- `order.PlayerId != state.CurrentPlayer`；
+- 发送方玩家已经 `IsAlive == false`。
+
+客户端 `SubmitOrder` 也检查本地玩家是否已死亡、是否处于观战/结算状态。
+
+### 验收
+
+- [ ] 玩家最后一座城市被占后，其所有单位从 Model 和 View 中消失。
+- [ ] 该玩家之后进入观战，不能再操作。
+- [ ] 后续回合不会再停在死亡玩家。
+- [ ] 只剩一名存活玩家时，所有客户端进入 GameOver。
+- [ ] 胜利方和失败方显示正确结果。
+- [ ] 结算面板在攻城动画播完后出现。
+- [ ] 游戏结束后服务端拒绝所有新命令。
+
+### 暂不做
+
+- 人类玩家全部死亡但 AI 仍存活时提前结算；
+- 断线重连、AI 接管；
+- 多种胜利条件。
+
+---
+
+## NET-11 任务卡：开局随机角色解析
+
+**目标**：房间中角色选择为 `0 = 随机` 时，在正式开局前由服务端随机分配一个已有角色，并把最终角色 ID 下发给所有客户端。
+
+### 执行时机
+
+所有人类玩家就绪、服务端准备广播 `StartGameMsg` 之前：
+
+```text
+检查 Ready
+→ 解析所有 CharacterId == 0 的槽位
+→ 写入最终 CharacterId
+→ 广播 StartGameMsg（SlotData 中是最终角色）
+```
+
+不能在 `GameController.BuildGameInfo()` 里各自随机，否则不同客户端会得到不同角色。
+
+### 规则
+
+1. `CharacterId == 0` 表示随机。
+2. 候选角色来自：
+
+```csharp
+ConfigMgr.Instance.characterCfgs
+```
+
+3. 排除 `Id == 0` 的随机占位角色。
+4. 优先排除已经被其他槽位明确选择的角色。
+5. AI 槽位默认 `CharacterId == 0`，也参与随机分配。
+6. 如果候选不足，允许重复选择，但不要分配 `Id == 0`。
+7. 随机结果只由 Host 生成，所有客户端使用 `StartGameMsg` 中的最终槽位数据。
+
+### 实现位置
+
+`NetworkMgr` 的“所有人类就绪”分支中，在发送 `StartGameMsg` 前调用：
+
+```text
+ResolveRandomCharacters()
+```
+
+建议增加：
+
+```text
+HashSet<int> usedCharacterIds
+List<CharacterCfg> candidates
+```
+
+不要使用 `UnityEngine.Random` 作为唯一随机源，建议使用服务端 `System.Random` 或统一种子随机。
+
+### 验收
+
+- [ ] 房间中每个槽位仍可选择“随机”。
+- [ ] 开局后每个槽位都有非 0 的最终角色 ID。
+- [ ] 不同客户端收到的最终角色分配完全一致。
+- [ ] 已明确选择的角色不会被随机重复分配。
+- [ ] AI 槽位也会分配到实际角色。
+- [ ] 候选角色不足时不会崩溃，且有明确兜底规则。
+
+### 不做
+
+- 不做角色平衡；
+- 不做重随；
+- 不做角色禁用；
+- 不改 GameController 的 GameInfo 装配逻辑。

@@ -1,4 +1,4 @@
-using SparkAge.Controller;
+﻿using SparkAge.Controller;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -11,6 +11,7 @@ namespace SparkAge.View.UI
         public static UIManager Instance => instance;
 
         private Transform canvas;
+        public Transform CanvasRect => canvas;
         //面板字典
         Dictionary<string, BasePanel> panelDic = new();
 
@@ -33,6 +34,8 @@ namespace SparkAge.View.UI
                 GameObject obj = GameObject.Instantiate(Resources.Load<GameObject>("Prefabs/UI/" + panelName));
                 obj.transform.SetParent(canvas, false);
                 panel = obj.GetComponent<T>();
+                if (panel == null)
+                    panel = obj.AddComponent<T>();
                 panelDic[panelName] = panel;
             }
             panel.ShowMe();
@@ -56,6 +59,8 @@ namespace SparkAge.View.UI
                 GameObject obj = GameObject.Instantiate(Resources.Load<GameObject>("Prefabs/UI/" + panelName));
                 obj.transform.SetParent(canvas, false);
                 panel = obj.GetComponent<T>();
+                if (panel == null)
+                    panel = obj.AddComponent<T>();
                 panelDic[panelName] = panel;
             }
             return panel as T;

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace SparkAge.Model.Hex
 {
@@ -26,13 +27,32 @@ namespace SparkAge.Model.Hex
 
         public HexCoord Neighbor(int dir) => this + Directions[((dir % 6) + 6) % 6];
 
-        // 距离公式：max(|Δq|, |Δr|, |Δq+Δr|)
         public int DistanceTo(HexCoord other)
         {
             int dq = Math.Abs(Q - other.Q);
             int dr = Math.Abs(R - other.R);
             int ds = Math.Abs((Q + R) - (other.Q + other.R));
             return Math.Max(dq, Math.Max(dr, ds));
+        }
+        public List<HexCoord> GetRange(int r)
+        {
+            List<HexCoord> result = new List<HexCoord>();
+
+            if (r < 0)
+                return result;
+
+            for (int dq = -r; dq <= r; dq++)
+            {
+                int minDr = Math.Max(-r, -dq - r);
+                int maxDr = Math.Min(r, -dq + r);
+
+                for (int dr = minDr; dr <= maxDr; dr++)
+                {
+                    result.Add(new HexCoord(Q + dq, R + dr));
+                }
+            }
+
+            return result;
         }
     }
 }

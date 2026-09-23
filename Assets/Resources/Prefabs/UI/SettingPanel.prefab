@@ -463,6 +463,7 @@ GameObject:
   - component: {fileID: 4472540526384806734}
   - component: {fileID: 2912103188466272669}
   - component: {fileID: 8236327947410488237}
+  - component: {fileID: 1634728639184736773}
   m_Layer: 5
   m_Name: SettingPanel
   m_TagString: Untagged
@@ -533,6 +534,23 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!114 &1634728639184736773
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1839419960980658793}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ed8b525f515b094093189a770e6b786, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  btnClose: {fileID: 5877174785520578468}
+  sldMusic: {fileID: 7762253028889613074}
+  sldSound: {fileID: 5390730820399905573}
+  togMusic: {fileID: 8959104475818101604}
+  togSound: {fileID: 2724990588663714126}
 --- !u!1 &2448542977354396328
 GameObject:
   m_ObjectHideFlags: 0

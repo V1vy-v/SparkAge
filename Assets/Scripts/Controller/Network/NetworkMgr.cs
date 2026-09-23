@@ -1,4 +1,5 @@
 using Mirror;
+using SparkAge.Config;
 using SparkAge.Model.Orders;
 using SparkAge.View.UI;
 using System;
@@ -25,6 +26,8 @@ namespace SparkAge.Controller.Network
         int GetPlayerId(int connectionId) => slots[Array.FindIndex(slotConns, id => id == connectionId)].PlayerId;
         int mapId;
         public int MapId => mapId;
+        int mapSeed;
+        public int MapSeed => mapSeed;
         int myPlayerId;
         public int MyPlayerId => myPlayerId;
         //UI事件
@@ -35,7 +38,6 @@ namespace SparkAge.Controller.Network
         //游戏初始化信息
         bool isFirst = true;
         GameUpdateMsg gameInitMsg;
-
 
         public override void Awake()
         {
@@ -51,6 +53,13 @@ namespace SparkAge.Controller.Network
             }
             //初始化map
             mapId = 0;
+        }
+        public override void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
+
+            base.OnDestroy();
         }
 
         #region 一、消息注册与消息处理
@@ -96,7 +105,10 @@ namespace SparkAge.Controller.Network
             //检查是否全部准备
             if (slots[0].Ready && slots[1].Ready && slots[2].Ready && slots[3].Ready)
             {
-                NetworkServer.SendToAll(new StartGameMsg { AllReady = true, Slots = slots, MapId = mapId });
+                //此处将随机选择转化成确定选择
+                ResolveRandomCharacters();
+                ResolveRandomMapSeed();
+                NetworkServer.SendToAll(new StartGameMsg { AllReady = true, Slots = slots, MapId = mapId, MapSeed = mapSeed });
             }
         }
         void OnPlayerCharacterMsg(NetworkConnectionToClient conn, PlayerCharacterMsg msg)
@@ -137,6 +149,8 @@ namespace SparkAge.Controller.Network
             BaseOrder order = ToOrder(msg);
             ExecuteAndBroadcast(order, conn);
         }
+
+        System.Random r = new System.Random();
         public void ExecuteAndBroadcast(BaseOrder order, NetworkConnectionToClient requester = null)
         {
             ExecuteResult result = networkInput.ExecuteOrder(order);
@@ -150,6 +164,36 @@ namespace SparkAge.Controller.Network
             }
 
             NetworkServer.SendToAll(result.GameUpdateMsg);
+        }
+        private void ResolveRandomCharacters()
+        {
+            Queue<int> randomSlots = new();
+            List<int> canSelCharacters = new();
+            foreach(var cfg in ConfigMgr.Instance.characterCfgs)
+            {
+                if(cfg.Id == 0) continue;
+                canSelCharacters.Add(cfg.Id);
+            }
+
+            for (int i = 0; i < slots.Length; i++) 
+            {
+                if (slots[i].CharacterId == 0)
+                    randomSlots.Enqueue(i);
+                else
+                    canSelCharacters.Remove(slots[i].CharacterId);
+            }
+
+            while (randomSlots.Count > 0)
+            {
+                int curSlotIdx = randomSlots.Dequeue();
+                int characterIdx = r.Next(canSelCharacters.Count);
+                slots[curSlotIdx].CharacterId = canSelCharacters[characterIdx];
+                canSelCharacters.RemoveAt(characterIdx);
+            }
+        }
+        private void ResolveRandomMapSeed()
+        {
+            mapSeed = r.Next(10000);
         }
         #endregion
 
@@ -190,6 +234,7 @@ namespace SparkAge.Controller.Network
             //存储来自服务端的槽位和地图数据
             slots = msg.Slots;
             mapId = msg.MapId;
+            mapSeed = msg.MapSeed;
             //隐藏UI
             UIManager.Instance.HidePanel<RoomPanel>();
             UIManager.Instance.HidePanel<BeginPanel>();
@@ -330,6 +375,26 @@ namespace SparkAge.Controller.Network
         public void SendGameReady()
         {
             NetworkClient.Send(new GameReadyMsg { });
+        }
+        public void ResetForNewSession()
+        {
+            if (mode == NetworkManagerMode.Host)
+                StopHost();
+            else if (mode == NetworkManagerMode.ClientOnly)
+                StopClient();
+
+            for (int i = 0; i < slots.Length; i++)
+            {
+                slots[i].PlayerId = i + 1;
+                slots[i].Reset();
+                slotConns[i] = -1;
+            }
+
+            myPlayerId = 0;
+            mapId = 0;
+            isFirst = true;
+            gameInitMsg = default;
+            networkInput = null;
         }
         #endregion
     }

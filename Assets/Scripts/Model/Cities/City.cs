@@ -12,12 +12,13 @@ namespace SparkAge.Model.Cities
     {
         public int ID;//唯一ID
         public int Owner;//所属玩家
-        public string Name;//名字
         public HexCoord Position;//位置
-
-        public int Radius;//半径
         public int Production;//当前生产力
         public int Hp;//当前血量
+
+        public int ProductionPerTurn;//每回合生产力增值
+        public int Radius;//半径
+        public string Name;//名字
         public int MaxHp;//血量上限
         public int Def;//防御力
 

@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ff96e66a257a9a469ac4733ed5324cc, type: 3}
+  m_Name: 7 Sargon
+  m_EditorClassIdentifier: 
+  Id: 7
+  Name: "\u8428\u5C14\u8D21"
+  Description: 
+  CityNames:
+  - "\u6C99\u5C14-\u963F\u52A0\u5FB7"
+  - "\u963F\u5361\u80E1\u62C9"
+  - "\u957F\u6CC9\u9547"
+  - "\u8D64\u89D2\u5C0F\u9547"
+  - "\u6CFD\u5C14\u97E6\u5C14\u5BDF"
+  WarriorAtkBonus: 0
+  WarriorDefBonus: 1
+  WarriorHpBonus: 2
+  CityHpBonus: 2
+  CityDefBonus: 1
+  CityProductionBonus: -1
+  Prefab: {fileID: 0}

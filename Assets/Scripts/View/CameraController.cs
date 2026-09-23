@@ -1,7 +1,11 @@
+using SparkAge.Controller.Network;
+using SparkAge.Framework.EventCenter;
 using SparkAge.Framework.Hex;
 using SparkAge.Model.Hex;
+using SparkAge.Model.Units;
 using System.Collections;
 using UnityEngine;
+using static SparkAge.Framework.EventCenter.EventDefine;
 
 namespace SparkAge.View
 {
@@ -19,6 +23,20 @@ namespace SparkAge.View
         Vector3 center, topRight, bottomLeft;
         bool isBlocking = false;
 
+        /// <summary>
+        /// 摄像机位置初始化：地图中央
+        /// </summary>
+        public void Init(HexCoord center, HexCoord topRight, HexCoord bottomLeft)
+        {
+            this.center = HexLayout.HexToPixel(center, 1f, 0);
+            this.topRight = HexLayout.HexToPixel(topRight, 1f, 0); ;
+            this.bottomLeft = HexLayout.HexToPixel(bottomLeft, 1f, 0);
+
+            this.target = HexLayout.HexToPixel(center, 1f, 0);
+            transform.rotation = Quaternion.Euler(pitch, 0, 0);
+
+            EventCenter.Instance.AddListener<InitialSettlers>(OnInitialSettlers);
+        }
         void LateUpdate()
         {
             if (isBlocking) return;
@@ -32,18 +50,22 @@ namespace SparkAge.View
             if (Input.GetMouseButton(2))
                 CameraMove();
         }
-        /// <summary>
-        /// 摄像机位置初始化：地图中央
-        /// </summary>
-        public void Init(HexCoord center, HexCoord topRight, HexCoord bottomLeft)
+        private void OnDestroy()
         {
-            this.center = HexLayout.HexToPixel(center, 1f, 0);
-            this.topRight = HexLayout.HexToPixel(topRight, 1f, 0); ;
-            this.bottomLeft = HexLayout.HexToPixel(bottomLeft, 1f, 0);
-
-            this.target = HexLayout.HexToPixel(center, 1f, 0);
-            transform.rotation = Quaternion.Euler(pitch, 0, 0);
+            EventCenter.Instance.RemoveListener<InitialSettlers>(OnInitialSettlers);
         }
+
+        private void OnInitialSettlers(InitialSettlers e)
+        {
+            Unit unit = e.Settlers.Find(
+                s => s.Owner == NetworkMgr.Instance.MyPlayerId);
+
+            if (unit == null)
+                return;
+
+            ChangeTarget(HexLayout.HexToPixel(unit.Position, 1f, 0));
+        }
+
         /// <summary>
         /// 摄像机移动
         /// </summary>

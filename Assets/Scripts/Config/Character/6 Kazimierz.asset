@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5ff96e66a257a9a469ac4733ed5324cc, type: 3}
+  m_Name: 6 Kazimierz
+  m_EditorClassIdentifier: 
+  Id: 6
+  Name: "\u5361\u897F\u7C73\u5C14"
+  Description: 
+  CityNames:
+  - "\u5361\u74E6\u83B1\u5229\u4E9A\u57FA"
+  - "\u8328\u6C83\u6D85\u514B"
+  - "\u96F6\u53F7\u5730\u5757"
+  - "\u6EF4\u6C34\u6751"
+  - "\u9EC4\u91D1\u5E73\u539F"
+  WarriorAtkBonus: 1
+  WarriorDefBonus: 0
+  WarriorHpBonus: 5
+  CityHpBonus: 5
+  CityDefBonus: 0
+  CityProductionBonus: 1
+  Prefab: {fileID: 0}
